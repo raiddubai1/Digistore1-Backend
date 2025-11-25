@@ -1,0 +1,475 @@
+// Prisma Schema for Digistore1 Digital Products Marketplace
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+enum UserRole {
+  CUSTOMER
+  VENDOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+model User {
+  id                String      @id @default(cuid())
+  email             String      @unique
+  password          String
+  name              String
+  avatar            String?
+  role              UserRole    @default(CUSTOMER)
+  status            UserStatus  @default(PENDING_VERIFICATION)
+  emailVerified     Boolean     @default(false)
+  emailVerifiedAt   DateTime?
+  verificationToken String?
+  resetToken        String?
+  resetTokenExpiry  DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  // Relations
+  vendorProfile     VendorProfile?
+  customerProfile   CustomerProfile?
+  orders            Order[]
+  reviews           Review[]
+  wishlist          Wishlist[]
+  downloads         Download[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+model VendorProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  businessName      String
+  businessEmail     String
+  businessPhone     String?
+  businessAddress   String?
+  taxId             String?
+  website           String?
+  description       String?
+  logo              String?
+  banner            String?
+  
+  // Stripe Connect
+  stripeAccountId   String?  @unique
+  stripeOnboarded   Boolean  @default(false)
+  
+  // Stats
+  totalSales        Decimal  @default(0) @db.Decimal(10, 2)
+  totalRevenue      Decimal  @default(0) @db.Decimal(10, 2)
+  availableBalance  Decimal  @default(0) @db.Decimal(10, 2)
+  pendingBalance    Decimal  @default(0) @db.Decimal(10, 2)
+  
+  // Settings
+  autoApproveProducts Boolean @default(false)
+  notifyOnSale      Boolean  @default(true)
+  notifyOnReview    Boolean  @default(true)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  products          Product[]
+  payouts           Payout[]
+
+  @@index([userId])
+  @@index([stripeAccountId])
+  @@map("vendor_profiles")
+}
+
+model CustomerProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  phone             String?
+  address           String?
+  city              String?
+  state             String?
+  country           String?
+  zipCode           String?
+  
+  // Stripe
+  stripeCustomerId  String?  @unique
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@map("customer_profiles")
+}
+
+// ============================================
+// PRODUCTS & CATEGORIES
+// ============================================
+
+enum ProductStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum LicenseType {
+  PERSONAL
+  COMMERCIAL
+  EXTENDED
+}
+
+model Category {
+  id            String    @id @default(cuid())
+  name          String
+  slug          String    @unique
+  description   String?
+  icon          String?
+  image         String?
+  parentId      String?
+  parent        Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children      Category[] @relation("CategoryHierarchy")
+  order         Int       @default(0)
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  products      Product[]
+
+  @@index([slug])
+  @@index([parentId])
+  @@map("categories")
+}
+
+model Product {
+  id                String        @id @default(cuid())
+  title             String
+  slug              String        @unique
+  description       String        @db.Text
+  shortDescription  String?
+  
+  // Pricing
+  price             Decimal       @db.Decimal(10, 2)
+  originalPrice     Decimal?      @db.Decimal(10, 2)
+  discount          Int?          @default(0)
+  
+  // Category & Tags
+  categoryId        String
+  category          Category      @relation(fields: [categoryId], references: [id])
+  subcategory       String?
+  tags              String[]
+  
+  // File Information
+  fileType          String
+  fileSize          BigInt?
+  fileUrl           String
+  fileName          String
+  
+  // Media
+  thumbnailUrl      String
+  previewImages     String[]
+  
+  // Metadata
+  whatsIncluded     String[]
+  requirements      String[]
+  
+  // Stats
+  rating            Decimal       @default(0) @db.Decimal(3, 2)
+  reviewCount       Int           @default(0)
+  downloadCount     Int           @default(0)
+  viewCount         Int           @default(0)
+  
+  // Flags
+  featured          Boolean       @default(false)
+  bestseller        Boolean       @default(false)
+  newArrival        Boolean       @default(false)
+  
+  // Status
+  status            ProductStatus @default(DRAFT)
+  rejectionReason   String?
+  
+  // Vendor
+  vendorId          String
+  vendor            VendorProfile @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  publishedAt       DateTime?
+
+  // Relations
+  reviews           Review[]
+  orderItems        OrderItem[]
+  wishlist          Wishlist[]
+  downloads         Download[]
+
+  @@index([slug])
+  @@index([categoryId])
+  @@index([vendorId])
+  @@index([status])
+  @@index([featured])
+  @@index([bestseller])
+  @@map("products")
+}
+
+// ============================================
+// ORDERS & PAYMENTS
+// ============================================
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  STRIPE
+  PAYPAL
+}
+
+model Order {
+  id                String        @id @default(cuid())
+  orderNumber       String        @unique
+
+  // Customer
+  userId            String
+  user              User          @relation(fields: [userId], references: [id])
+
+  // Pricing
+  subtotal          Decimal       @db.Decimal(10, 2)
+  discount          Decimal       @default(0) @db.Decimal(10, 2)
+  total             Decimal       @db.Decimal(10, 2)
+
+  // Payment
+  status            OrderStatus   @default(PENDING)
+  paymentMethod     PaymentMethod
+  paymentId         String?
+  stripePaymentIntentId String?   @unique
+
+  // Coupon
+  couponCode        String?
+
+  // Billing Info
+  billingEmail      String
+  billingName       String
+  billingAddress    String?
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  completedAt       DateTime?
+
+  // Relations
+  items             OrderItem[]
+
+  @@index([userId])
+  @@index([orderNumber])
+  @@index([status])
+  @@index([stripePaymentIntentId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                String   @id @default(cuid())
+
+  orderId           String
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id])
+
+  productTitle      String
+  productSlug       String
+  price             Decimal  @db.Decimal(10, 2)
+  license           LicenseType
+
+  // Vendor commission
+  vendorId          String
+  vendorRevenue     Decimal  @db.Decimal(10, 2)
+  platformFee       Decimal  @db.Decimal(10, 2)
+
+  createdAt         DateTime @default(now())
+
+  // Relations
+  downloads         Download[]
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+// ============================================
+// DOWNLOADS
+// ============================================
+
+model Download {
+  id                String    @id @default(cuid())
+
+  userId            String
+  user              User      @relation(fields: [userId], references: [id])
+
+  productId         String
+  product           Product   @relation(fields: [productId], references: [id])
+
+  orderItemId       String
+  orderItem         OrderItem @relation(fields: [orderItemId], references: [id])
+
+  downloadToken     String    @unique
+  downloadUrl       String?
+  expiresAt         DateTime
+  downloadCount     Int       @default(0)
+  maxDownloads      Int       @default(5)
+  ipAddress         String?
+  userAgent         String?
+
+  createdAt         DateTime  @default(now())
+  lastDownloadedAt  DateTime?
+
+  @@index([userId])
+  @@index([productId])
+  @@index([downloadToken])
+  @@map("downloads")
+}
+
+// ============================================
+// REVIEWS & RATINGS
+// ============================================
+
+model Review {
+  id                String   @id @default(cuid())
+
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+
+  rating            Int
+  title             String?
+  comment           String   @db.Text
+  helpful           Int      @default(0)
+  verified          Boolean  @default(false)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([productId, userId])
+  @@index([productId])
+  @@index([userId])
+  @@map("reviews")
+}
+
+// ============================================
+// WISHLIST
+// ============================================
+
+model Wishlist {
+  id                String   @id @default(cuid())
+
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt         DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@map("wishlist")
+}
+
+// ============================================
+// COUPONS
+// ============================================
+
+enum CouponType {
+  PERCENTAGE
+  FIXED
+}
+
+model Coupon {
+  id                String     @id @default(cuid())
+  code              String     @unique
+  type              CouponType
+  value             Decimal    @db.Decimal(10, 2)
+  minPurchase       Decimal?   @db.Decimal(10, 2)
+  maxDiscount       Decimal?   @db.Decimal(10, 2)
+  usageLimit        Int?
+  usageCount        Int        @default(0)
+  active            Boolean    @default(true)
+  startsAt          DateTime?
+  expiresAt         DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@index([code])
+  @@map("coupons")
+}
+
+// ============================================
+// VENDOR PAYOUTS
+// ============================================
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model Payout {
+  id                String       @id @default(cuid())
+
+  vendorId          String
+  vendor            VendorProfile @relation(fields: [vendorId], references: [id])
+
+  amount            Decimal      @db.Decimal(10, 2)
+  status            PayoutStatus @default(PENDING)
+  stripePayoutId    String?      @unique
+
+  requestedAt       DateTime     @default(now())
+  processedAt       DateTime?
+  completedAt       DateTime?
+
+  notes             String?
+
+  @@index([vendorId])
+  @@index([status])
+  @@map("payouts")
+}
+
+// ============================================
+// PLATFORM SETTINGS
+// ============================================
+
+model Setting {
+  id                String   @id @default(cuid())
+  key               String   @unique
+  value             String   @db.Text
+  description       String?
+  updatedAt         DateTime @updatedAt
+
+  @@map("settings")
+}
+
