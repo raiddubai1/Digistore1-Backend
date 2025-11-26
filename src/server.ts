@@ -89,7 +89,10 @@ app.use(errorHandler);
 // START SERVER
 // ============================================
 
-app.listen(PORT, () => {
+// Bind to 0.0.0.0 for Render deployment
+const HOST = process.env.HOST || '0.0.0.0';
+
+app.listen(PORT, HOST, () => {
   console.log(`
 ╔═══════════════════════════════════════════╗
 ║                                           ║
@@ -97,7 +100,7 @@ app.listen(PORT, () => {
 ║                                           ║
 ║   Environment: ${process.env.NODE_ENV?.padEnd(27) || 'development'.padEnd(27)}║
 ║   Port: ${PORT.toString().padEnd(34)}║
-║   URL: http://localhost:${PORT.toString().padEnd(20)}║
+║   Host: ${HOST.padEnd(34)}║
 ║                                           ║
 ╚═══════════════════════════════════════════╝
   `);

@@ -1,0 +1,44 @@
+services:
+  # Backend API Service
+  - type: web
+    name: digistore1-backend
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npx prisma migrate deploy && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: digistore1-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 30d
+      - key: PLATFORM_COMMISSION_RATE
+        value: 0.15
+      - key: BCRYPT_ROUNDS
+        value: 12
+      - key: DOWNLOAD_LINK_EXPIRY_HOURS
+        value: 48
+      - key: MAX_DOWNLOAD_ATTEMPTS
+        value: 5
+
+databases:
+  # PostgreSQL Database
+  - name: digistore1-db
+    databaseName: digistore1
+    plan: free
+    region: oregon
+
