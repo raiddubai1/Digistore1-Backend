@@ -8,19 +8,15 @@ export interface JwtPayload {
 }
 
 export const generateAccessToken = (payload: JwtPayload): string => {
-  const expiresIn = (process.env.JWT_EXPIRES_IN || '7d') as string | number;
-  const options: SignOptions = {
-    expiresIn,
-  };
-  return jwt.sign(payload, process.env.JWT_SECRET!, options);
+  return jwt.sign(payload, process.env.JWT_SECRET!, {
+    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  } as SignOptions);
 };
 
 export const generateRefreshToken = (payload: JwtPayload): string => {
-  const expiresIn = (process.env.JWT_REFRESH_EXPIRES_IN || '30d') as string | number;
-  const options: SignOptions = {
-    expiresIn,
-  };
-  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET!, options);
+  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET!, {
+    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
+  } as SignOptions);
 };
 
 export const verifyAccessToken = (token: string): JwtPayload => {
