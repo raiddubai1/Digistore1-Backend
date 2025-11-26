@@ -33,7 +33,7 @@
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.17",
     "stripe": "^17.5.0",
-    "aws-sdk": "^2.1705.0",
+    "aws-sdk": "^2.1691.0",
     "helmet": "^8.0.0",
     "morgan": "^1.10.0",
     "compression": "^1.7.5"
