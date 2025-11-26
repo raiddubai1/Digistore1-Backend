@@ -22,7 +22,7 @@ import paymentRoutes from './routes/payment.routes';
 dotenv.config();
 
 const app: Application = express();
-const PORT = process.env.PORT || 5000;
+const PORT = parseInt(process.env.PORT || '5000', 10);
 
 // ============================================
 // MIDDLEWARE
