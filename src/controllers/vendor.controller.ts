@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth';
+import { ProductStatus } from '@prisma/client';
 
 // Get dashboard stats
 export const getDashboardStats = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -17,7 +18,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response, next: N
     const [totalProducts, totalSales, pendingProducts] = await Promise.all([
       prisma.product.count({ where: { vendorId: vendorProfile.id } }),
       prisma.orderItem.count({ where: { vendorId: vendorProfile.id } }),
-      prisma.product.count({ where: { vendorId: vendorProfile.id, status: 'PENDING_REVIEW' } }),
+      prisma.product.count({ where: { vendorId: vendorProfile.id, status: ProductStatus.PENDING_REVIEW } }),
     ]);
 
     res.json({

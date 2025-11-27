@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth';
-import { Prisma } from '@prisma/client';
+import { Prisma, ProductStatus } from '@prisma/client';
 
 // Get all products with filtering, search, and pagination
 export const getAllProducts = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -26,7 +26,7 @@ export const getAllProducts = async (req: AuthRequest, res: Response, next: Next
 
     // Build where clause
     const where: Prisma.ProductWhereInput = {
-      status: 'APPROVED',
+      status: ProductStatus.APPROVED,
     };
 
     if (category) {
@@ -135,7 +135,7 @@ export const getFeaturedProducts = async (req: Request, res: Response, next: Nex
   try {
     const products = await prisma.product.findMany({
       where: {
-        status: 'APPROVED',
+        status: ProductStatus.APPROVED,
         featured: true,
       },
       take: 8,
@@ -172,7 +172,7 @@ export const getBestsellers = async (req: Request, res: Response, next: NextFunc
   try {
     const products = await prisma.product.findMany({
       where: {
-        status: 'APPROVED',
+        status: ProductStatus.APPROVED,
         bestseller: true,
       },
       take: 8,
@@ -209,7 +209,7 @@ export const getNewArrivals = async (req: Request, res: Response, next: NextFunc
   try {
     const products = await prisma.product.findMany({
       where: {
-        status: 'APPROVED',
+        status: ProductStatus.APPROVED,
         newArrival: true,
       },
       take: 8,
@@ -372,7 +372,7 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
         whatsIncluded: whatsIncluded || [],
         requirements: requirements || [],
         vendorId: vendorProfile.id,
-        status: vendorProfile.autoApproveProducts ? 'APPROVED' : 'PENDING_REVIEW',
+        status: vendorProfile.autoApproveProducts ? ProductStatus.APPROVED : ProductStatus.PENDING_REVIEW,
       },
       include: {
         category: true,
@@ -512,7 +512,7 @@ export const approveProduct = async (req: AuthRequest, res: Response, next: Next
     const product = await prisma.product.update({
       where: { id },
       data: {
-        status: 'APPROVED',
+        status: ProductStatus.APPROVED,
         publishedAt: new Date(),
       },
     });
@@ -536,7 +536,7 @@ export const rejectProduct = async (req: AuthRequest, res: Response, next: NextF
     const product = await prisma.product.update({
       where: { id },
       data: {
-        status: 'REJECTED',
+        status: ProductStatus.REJECTED,
         rejectionReason: reason,
       },
     });
