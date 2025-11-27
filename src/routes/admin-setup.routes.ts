@@ -356,5 +356,24 @@ router.post('/create-admin', async (req, res) => {
   }
 });
 
+// Clear all products endpoint - useful for re-seeding
+router.delete('/clear-products', async (req, res) => {
+  try {
+    const result = await prisma.product.deleteMany({});
+
+    res.json({
+      success: true,
+      message: `Deleted ${result.count} products`,
+      data: { deletedCount: result.count },
+    });
+  } catch (error: any) {
+    console.error('Clear products error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to clear products',
+    });
+  }
+});
+
 export default router;
 

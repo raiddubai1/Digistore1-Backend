@@ -12,6 +12,7 @@
     "prisma:studio": "npx prisma studio",
     "prisma:seed": "npx tsx prisma/seed.ts",
     "seed:production": "npx tsx scripts/seed-production.ts",
+    "clear:products": "npx tsx scripts/clear-products.ts",
     "create-admin": "npx tsx scripts/create-admin.ts",
     "lint": "eslint src --ext .ts",
     "test": "jest"
