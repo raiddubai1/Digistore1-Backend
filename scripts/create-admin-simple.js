@@ -1,10 +1,19 @@
 // Simple script to create admin user
 // Run with: node scripts/create-admin-simple.js
+//
+// To use with Render database, set DATABASE_URL environment variable:
+// DATABASE_URL="your-render-database-url" node scripts/create-admin-simple.js
 
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL
+    }
+  }
+});
 
 async function main() {
   const email = 'admin@digistore1.com';

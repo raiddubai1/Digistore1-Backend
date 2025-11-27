@@ -219,6 +219,7 @@ model Product {
   orderItems        OrderItem[]
   wishlist          Wishlist[]
   downloads         Download[]
+  productAttributes ProductAttribute[]
 
   @@index([slug])
   @@index([categoryId])
@@ -227,6 +228,59 @@ model Product {
   @@index([featured])
   @@index([bestseller])
   @@map("products")
+}
+
+// ============================================
+// ATTRIBUTES
+// ============================================
+
+enum AttributeType {
+  TEXT
+  NUMBER
+  SELECT
+  MULTISELECT
+  COLOR
+  BOOLEAN
+}
+
+model Attribute {
+  id                String              @id @default(cuid())
+  name              String
+  slug              String              @unique
+  description       String?
+  type              AttributeType       @default(TEXT)
+  options           String[]            // For SELECT and MULTISELECT types
+  required          Boolean             @default(false)
+  active            Boolean             @default(true)
+  order             Int                 @default(0)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  // Relations
+  productAttributes ProductAttribute[]
+
+  @@index([slug])
+  @@map("attributes")
+}
+
+model ProductAttribute {
+  id                String   @id @default(cuid())
+
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  attributeId       String
+  attribute         Attribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+
+  value             String   // Stored as string, parsed based on attribute type
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([productId, attributeId])
+  @@index([productId])
+  @@index([attributeId])
+  @@map("product_attributes")
 }
 
 // ============================================
