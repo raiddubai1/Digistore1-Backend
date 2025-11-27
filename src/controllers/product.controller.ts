@@ -119,6 +119,7 @@ export const getAllProducts = async (req: AuthRequest, res: Response, next: Next
       },
     });
   } catch (error) {
+    console.error('getAllProducts error:', error);
     next(error);
   }
 };
@@ -149,6 +150,7 @@ export const getFeaturedProducts = async (req: Request, res: Response, next: Nex
       data: { products },
     });
   } catch (error) {
+    console.error('getFeaturedProducts error:', error);
     next(error);
   }
 };
@@ -179,6 +181,7 @@ export const getBestsellers = async (req: Request, res: Response, next: NextFunc
       data: { products },
     });
   } catch (error) {
+    console.error('getBestsellers error:', error);
     next(error);
   }
 };
@@ -209,6 +212,7 @@ export const getNewArrivals = async (req: Request, res: Response, next: NextFunc
       data: { products },
     });
   } catch (error) {
+    console.error('getNewArrivals error:', error);
     next(error);
   }
 };
