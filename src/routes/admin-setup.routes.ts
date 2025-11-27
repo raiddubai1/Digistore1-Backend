@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { hashPassword } from '../utils/password';
+import { ProductStatus } from '@prisma/client';
 
 const router = Router();
 
@@ -137,7 +138,7 @@ router.post('/seed', async (req, res) => {
         tags: ['marketing', 'seo', 'social-media'],
         whatsIncluded: ['Video lessons', 'PDF guides', 'Templates'],
         requirements: ['Basic computer skills'],
-        status: 'PUBLISHED',
+        status: ProductStatus.APPROVED,
         featured: true,
         bestseller: true,
         rating: 4.8,
@@ -165,7 +166,7 @@ router.post('/seed', async (req, res) => {
         tags: ['productivity', 'planning', 'goals'],
         whatsIncluded: ['PDF planner', 'Goal templates', 'Tracking sheets'],
         requirements: ['PDF reader'],
-        status: 'PUBLISHED',
+        status: ProductStatus.APPROVED,
         featured: true,
         bestseller: false,
         newArrival: true,
@@ -194,7 +195,7 @@ router.post('/seed', async (req, res) => {
         tags: ['web-development', 'react', 'nodejs'],
         whatsIncluded: ['Video tutorials', 'Source code', 'Project files'],
         requirements: ['Basic programming knowledge'],
-        status: 'PUBLISHED',
+        status: ProductStatus.APPROVED,
         featured: true,
         bestseller: true,
         newArrival: true,
