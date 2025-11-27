@@ -4,6 +4,15 @@ import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth';
 import { Prisma, ProductStatus } from '@prisma/client';
 
+// Helper function to serialize BigInt and Decimal fields
+const serializeProduct = (product: any) => ({
+  ...product,
+  fileSize: product.fileSize ? Number(product.fileSize) : null,
+  price: Number(product.price),
+  originalPrice: product.originalPrice ? Number(product.originalPrice) : null,
+  rating: Number(product.rating),
+});
+
 // Get all products with filtering, search, and pagination
 export const getAllProducts = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
@@ -109,7 +118,7 @@ export const getAllProducts = async (req: AuthRequest, res: Response, next: Next
     res.json({
       success: true,
       data: {
-        products,
+        products: products.map(serializeProduct),
         pagination: {
           page: Number(page),
           limit: Number(limit),
@@ -147,7 +156,7 @@ export const getFeaturedProducts = async (req: Request, res: Response, next: Nex
 
     res.json({
       success: true,
-      data: { products },
+      data: { products: products.map(serializeProduct) },
     });
   } catch (error) {
     console.error('getFeaturedProducts error:', error);
@@ -178,7 +187,7 @@ export const getBestsellers = async (req: Request, res: Response, next: NextFunc
 
     res.json({
       success: true,
-      data: { products },
+      data: { products: products.map(serializeProduct) },
     });
   } catch (error) {
     console.error('getBestsellers error:', error);
@@ -209,7 +218,7 @@ export const getNewArrivals = async (req: Request, res: Response, next: NextFunc
 
     res.json({
       success: true,
-      data: { products },
+      data: { products: products.map(serializeProduct) },
     });
   } catch (error) {
     console.error('getNewArrivals error:', error);
@@ -269,7 +278,7 @@ export const getProductBySlug = async (req: AuthRequest, res: Response, next: Ne
 
     res.json({
       success: true,
-      data: { product },
+      data: { product: serializeProduct(product) },
     });
   } catch (error) {
     next(error);
