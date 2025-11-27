@@ -101,13 +101,6 @@ export const getAllProducts = async (req: AuthRequest, res: Response, next: Next
               slug: true,
             },
           },
-          vendor: {
-            select: {
-              id: true,
-              businessName: true,
-              logo: true,
-            },
-          },
         },
       }),
       prisma.product.count({ where }),
@@ -148,13 +141,6 @@ export const getFeaturedProducts = async (req: Request, res: Response, next: Nex
             slug: true,
           },
         },
-        vendor: {
-          select: {
-            id: true,
-            businessName: true,
-            logo: true,
-          },
-        },
       },
     });
 
@@ -185,13 +171,6 @@ export const getBestsellers = async (req: Request, res: Response, next: NextFunc
             slug: true,
           },
         },
-        vendor: {
-          select: {
-            id: true,
-            businessName: true,
-            logo: true,
-          },
-        },
       },
     });
 
@@ -220,13 +199,6 @@ export const getNewArrivals = async (req: Request, res: Response, next: NextFunc
             id: true,
             name: true,
             slug: true,
-          },
-        },
-        vendor: {
-          select: {
-            id: true,
-            businessName: true,
-            logo: true,
           },
         },
       },
