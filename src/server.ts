@@ -19,6 +19,7 @@ import downloadRoutes from './routes/download.routes';
 import paymentRoutes from './routes/payment.routes';
 import adminSetupRoutes from './routes/admin-setup.routes';
 import attributeRoutes from './routes/attribute.routes';
+import uploadRoutes from './routes/upload.routes';
 
 // Load environment variables
 dotenv.config();
@@ -91,6 +92,7 @@ app.use('/api/downloads', downloadRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/admin-setup', adminSetupRoutes);
 app.use('/api/attributes', attributeRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // ============================================
 // ERROR HANDLING
