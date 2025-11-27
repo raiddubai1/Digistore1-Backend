@@ -9,8 +9,9 @@ router.post('/create-admin', async (req, res) => {
   try {
     const { email, password, name, secretKey } = req.body;
 
-    // Simple security check - require a secret key
-    if (secretKey !== process.env.ADMIN_SETUP_SECRET) {
+    // Simple security check - require a secret key (if set in environment)
+    const requiredSecret = process.env.ADMIN_SETUP_SECRET;
+    if (requiredSecret && secretKey !== requiredSecret) {
       return res.status(403).json({
         success: false,
         message: 'Invalid secret key',
