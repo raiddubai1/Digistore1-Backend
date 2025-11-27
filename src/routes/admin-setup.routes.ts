@@ -7,88 +7,116 @@ const router = Router();
 // Seed database endpoint - creates demo data if database is empty
 router.post('/seed', async (req, res) => {
   try {
-    // Check if categories already exist
-    const categoryCount = await prisma.category.count();
+    // Check if products already exist
+    const productCount = await prisma.product.count();
 
-    if (categoryCount > 0) {
+    if (productCount > 0) {
       return res.status(400).json({
         success: false,
-        message: 'Database already seeded. Categories exist.',
+        message: 'Database already seeded. Products exist.',
       });
     }
 
-    // Create categories
-    const businessCategory = await prisma.category.create({
-      data: {
-        name: 'Business and Marketing',
-        slug: 'business-and-marketing',
-        description: 'eBooks on business strategies, marketing, and entrepreneurship',
-        icon: 'briefcase',
-        order: 1,
-      },
+    // Get or create categories
+    let businessCategory = await prisma.category.findUnique({
+      where: { slug: 'business-and-marketing' },
+    });
+    if (!businessCategory) {
+      businessCategory = await prisma.category.create({
+        data: {
+          name: 'Business and Marketing',
+          slug: 'business-and-marketing',
+          description: 'eBooks on business strategies, marketing, and entrepreneurship',
+          icon: 'briefcase',
+          order: 1,
+        },
+      });
+    }
+
+    let personalCategory = await prisma.category.findUnique({
+      where: { slug: 'personal-development' },
+    });
+    if (!personalCategory) {
+      personalCategory = await prisma.category.create({
+        data: {
+          name: 'Personal Development',
+          slug: 'personal-development',
+          description: 'Self-improvement, relationships, and personal growth',
+          icon: 'sparkles',
+          order: 2,
+        },
+      });
+    }
+
+    let techCategory = await prisma.category.findUnique({
+      where: { slug: 'technology' },
+    });
+    if (!techCategory) {
+      techCategory = await prisma.category.create({
+        data: {
+          name: 'Technology',
+          slug: 'technology',
+          description: 'Programming, software development, and tech guides',
+          icon: 'code',
+          order: 3,
+        },
+      });
+    }
+
+    // Get or create vendor user
+    let vendor = await prisma.user.findUnique({
+      where: { email: 'vendor@example.com' },
+      include: { vendorProfile: true },
     });
 
-    const personalCategory = await prisma.category.create({
-      data: {
-        name: 'Personal Development',
-        slug: 'personal-development',
-        description: 'Self-improvement, relationships, and personal growth',
-        icon: 'sparkles',
-        order: 2,
-      },
-    });
-
-    const techCategory = await prisma.category.create({
-      data: {
-        name: 'Technology',
-        slug: 'technology',
-        description: 'Programming, software development, and tech guides',
-        icon: 'code',
-        order: 3,
-      },
-    });
-
-    // Create vendor user
-    const vendorPassword = await hashPassword('vendor123456');
-    const vendor = await prisma.user.create({
-      data: {
-        email: 'vendor@example.com',
-        password: vendorPassword,
-        name: 'Demo Vendor',
-        role: 'VENDOR',
-        status: 'ACTIVE',
-        emailVerified: true,
-        emailVerifiedAt: new Date(),
-        vendorProfile: {
-          create: {
-            businessName: 'Digital Products Co.',
-            businessEmail: 'vendor@example.com',
-            description: 'We create high-quality digital products',
-            website: 'https://example.com',
+    if (!vendor) {
+      const vendorPassword = await hashPassword('vendor123456');
+      vendor = await prisma.user.create({
+        data: {
+          email: 'vendor@example.com',
+          password: vendorPassword,
+          name: 'Demo Vendor',
+          role: 'VENDOR',
+          status: 'ACTIVE',
+          emailVerified: true,
+          emailVerifiedAt: new Date(),
+          vendorProfile: {
+            create: {
+              businessName: 'Digital Products Co.',
+              businessEmail: 'vendor@example.com',
+              description: 'We create high-quality digital products',
+              website: 'https://example.com',
+            },
           },
         },
-      },
-      include: {
-        vendorProfile: true,
-      },
+        include: {
+          vendorProfile: true,
+        },
+      });
+    }
+
+    // Get or create customer user
+    const existingCustomer = await prisma.user.findUnique({
+      where: { email: 'customer@example.com' },
     });
 
-    // Create customer user
-    const customerPassword = await hashPassword('customer123456');
-    await prisma.user.create({
-      data: {
-        email: 'customer@example.com',
-        password: customerPassword,
-        name: 'Demo Customer',
-        role: 'CUSTOMER',
-        status: 'ACTIVE',
-        emailVerified: true,
-        emailVerifiedAt: new Date(),
-        customerProfile: {
-          create: {},
+    if (!existingCustomer) {
+      const customerPassword = await hashPassword('customer123456');
+      await prisma.user.create({
+        data: {
+            email: 'customer@example.com',
+          password: customerPassword,
+          name: 'Demo Customer',
+          role: 'CUSTOMER',
+          status: 'ACTIVE',
+          emailVerified: true,
+          emailVerifiedAt: new Date(),
+          customerProfile: {
+            create: {},
+          },
         },
-      },
-    });
+      });
+    }
 
     // Create demo products
     await prisma.product.create({
