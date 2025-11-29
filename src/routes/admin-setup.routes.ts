@@ -852,5 +852,210 @@ router.post('/import-products', async (req, res) => {
   }
 });
 
+// Reorganize categories - creates clean structure and reassigns products
+router.post('/reorganize-categories', async (req, res) => {
+  try {
+    // Define new category structure
+    const newCategories = [
+      {
+        name: 'Digital Marketing & Business',
+        slug: 'digital-marketing-business',
+        description: 'Business courses, affiliate marketing, and marketing resources',
+        icon: 'briefcase',
+        order: 1,
+        subcategories: [
+          { name: 'Affiliate Marketing', slug: 'affiliate-marketing', order: 1 },
+          { name: 'Marketing Templates', slug: 'marketing-templates', order: 2 },
+          { name: 'Business Resources', slug: 'business-resources', order: 3 },
+        ],
+        keywords: ['business', 'marketing', 'affiliate', 'agente', 'hamburguesas', 'real estate'],
+      },
+      {
+        name: 'Canva Templates',
+        slug: 'canva-templates',
+        description: 'Editable Canva templates for social media and marketing',
+        icon: 'palette',
+        order: 2,
+        subcategories: [
+          { name: 'Instagram Templates', slug: 'instagram-templates', order: 1 },
+          { name: 'Facebook Templates', slug: 'facebook-templates', order: 2 },
+          { name: 'Business Branding', slug: 'business-branding', order: 3 },
+        ],
+        keywords: ['canva', 'instagram', 'facebook', 'template', 'editable', 'gym', 'gimnasio'],
+      },
+      {
+        name: 'Lightroom Presets',
+        slug: 'lightroom-presets',
+        description: 'Professional Lightroom presets for photography',
+        icon: 'camera',
+        order: 3,
+        subcategories: [
+          { name: 'Portrait Presets', slug: 'portrait-presets', order: 1 },
+          { name: 'Nature & Landscape', slug: 'nature-landscape-presets', order: 2 },
+          { name: 'Lifestyle Presets', slug: 'lifestyle-presets', order: 3 },
+        ],
+        keywords: ['lightroom', 'preset', 'filter', 'lrtemplate', 'matte', 'film', 'darken', 'black', 'city', 'indoor', 'landscape', 'nature', 'food', 'children', 'newborn', 'lovestory', 'night', 'freedom', 'blogger', 'colour'],
+      },
+      {
+        name: 'eBooks & Guides',
+        slug: 'ebooks-guides',
+        description: 'Digital books and comprehensive guides',
+        icon: 'book',
+        order: 4,
+        subcategories: [
+          { name: 'Pet & Animal Guides', slug: 'pet-animal-guides', order: 1 },
+          { name: 'How-To Guides', slug: 'how-to-guides', order: 2 },
+        ],
+        keywords: ['ebook', 'guide', 'cat', 'pet', 'training', 'how to'],
+      },
+      {
+        name: 'Stock Media',
+        slug: 'stock-media',
+        description: 'Stock videos, images, icons, and mockups',
+        icon: 'film',
+        order: 5,
+        subcategories: [
+          { name: 'Stock Videos', slug: 'stock-videos', order: 1 },
+          { name: 'Icons & Graphics', slug: 'icons-graphics', order: 2 },
+          { name: 'Mockups', slug: 'mockups', order: 3 },
+        ],
+        keywords: ['stock', 'video', 'icon', 'vector', 'mockup', 'background', 'animation', 'editor', 'clip', 'hd', '1080'],
+      },
+      {
+        name: 'Planners & Printables',
+        slug: 'planners-printables',
+        description: 'Digital planners, printables, and organizational tools',
+        icon: 'clipboard',
+        order: 6,
+        subcategories: [
+          { name: 'Business Planners', slug: 'business-planners', order: 1 },
+          { name: 'Personal Planners', slug: 'personal-planners', order: 2 },
+          { name: 'Coloring Books', slug: 'coloring-books', order: 3 },
+        ],
+        keywords: ['planner', 'printable', 'coloring', 'mandala', 'adhd', 'schedule', 'self care', 'productivity'],
+      },
+      {
+        name: 'Courses & Training',
+        slug: 'courses-training',
+        description: 'Video courses and educational training',
+        icon: 'graduation-cap',
+        order: 7,
+        subcategories: [
+          { name: 'Marketing Courses', slug: 'marketing-courses', order: 1 },
+          { name: 'Tech & Development', slug: 'tech-development', order: 2 },
+        ],
+        keywords: ['course', 'training', 'youtube', 'subscriber', 'web development', 'full stack', 'masterclass'],
+      },
+      {
+        name: 'Business Cards & Templates',
+        slug: 'business-cards-templates',
+        description: 'Professional business card designs and templates',
+        icon: 'id-card',
+        order: 8,
+        subcategories: [],
+        keywords: ['business card', 'card template', 'psd'],
+      },
+      {
+        name: 'Games & Educational',
+        slug: 'games-educational',
+        description: 'Educational games and interactive content',
+        icon: 'gamepad',
+        order: 9,
+        subcategories: [],
+        keywords: ['game', 'memory', 'educational', 'animals memory'],
+      },
+    ];
+
+    // Get all products first
+    const products = await prisma.product.findMany({
+      select: { id: true, title: true, description: true },
+    });
+
+    // Delete all existing categories
+    await prisma.category.deleteMany({});
+
+    // Create new categories and subcategories
+    const categoryMap: Record<string, { id: string; keywords: string[] }> = {};
+
+    for (const cat of newCategories) {
+      const created = await prisma.category.create({
+        data: {
+          name: cat.name,
+          slug: cat.slug,
+          description: cat.description,
+          icon: cat.icon,
+          order: cat.order,
+          active: true,
+        },
+      });
+
+      categoryMap[cat.slug] = { id: created.id, keywords: cat.keywords };
+
+      // Create subcategories
+      for (const sub of cat.subcategories) {
+        await prisma.category.create({
+          data: {
+            name: sub.name,
+            slug: sub.slug,
+            description: `${sub.name} under ${cat.name}`,
+            order: sub.order,
+            parentId: created.id,
+            active: true,
+          },
+        });
+      }
+    }
+
+    // Reassign products to new categories based on keywords
+    let reassigned = 0;
+    for (const product of products) {
+      const searchText = `${product.title} ${product.description || ''}`.toLowerCase();
+
+      let bestMatch: string | null = null;
+      let bestScore = 0;
+
+      for (const [slug, { id, keywords }] of Object.entries(categoryMap)) {
+        let score = 0;
+        for (const keyword of keywords) {
+          if (searchText.includes(keyword.toLowerCase())) {
+            score += keyword.length; // Longer matches = higher score
+          }
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatch = id;
+        }
+      }
+
+      if (bestMatch) {
+        await prisma.product.update({
+          where: { id: product.id },
+          data: { categoryId: bestMatch },
+        });
+        reassigned++;
+      }
+    }
+
+    // Get final count
+    const categories = await prisma.category.findMany({
+      include: { _count: { select: { products: true } } },
+      orderBy: { order: 'asc' },
+    });
+
+    res.json({
+      success: true,
+      message: `Categories reorganized: ${categories.length} categories created, ${reassigned} products reassigned`,
+      data: { categories },
+    });
+
+  } catch (error: any) {
+    console.error('Reorganize categories error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to reorganize categories',
+    });
+  }
+});
+
 export default router;
 
