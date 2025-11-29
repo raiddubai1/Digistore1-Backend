@@ -299,20 +299,32 @@ router.post('/create-admin', async (req, res) => {
     });
 
     if (existing) {
-      // Update to admin if exists
+      // Update to admin if exists - also update password if provided
+      const updateData: any = {
+        role: 'ADMIN',
+        status: 'ACTIVE',
+        emailVerified: true,
+        emailVerifiedAt: new Date(),
+      };
+
+      // Update password if provided
+      if (password) {
+        updateData.password = await hashPassword(password);
+      }
+
+      // Update name if provided
+      if (name) {
+        updateData.name = name;
+      }
+
       const updated = await prisma.user.update({
         where: { id: existing.id },
-        data: { 
-          role: 'ADMIN',
-          status: 'ACTIVE',
-          emailVerified: true,
-          emailVerifiedAt: new Date(),
-        },
+        data: updateData,
       });
 
       return res.json({
         success: true,
-        message: 'User updated to ADMIN role',
+        message: password ? 'Admin updated with new password' : 'User updated to ADMIN role',
         data: {
           id: updated.id,
           email: updated.email,
