@@ -1,17 +1,20 @@
 import { Router } from 'express';
 import * as paymentController from '../controllers/payment.controller';
-import { authenticate } from '../middleware/auth';
+import { authenticate, optionalAuth } from '../middleware/auth';
 
 const router = Router();
 
-// Create payment intent
-router.post('/create-intent', authenticate, paymentController.createPaymentIntent);
+// PayPal routes
+router.post('/paypal/create-order', optionalAuth, paymentController.createPayPalOrderHandler);
+router.post('/paypal/capture-order', optionalAuth, paymentController.capturePayPalOrderHandler);
+router.post('/paypal/webhook', paymentController.handlePayPalWebhook);
 
-// Stripe webhook (no auth required)
+// Legacy Stripe routes (for future)
+router.post('/create-intent', authenticate, paymentController.createPaymentIntent);
 router.post('/webhook', paymentController.handleWebhook);
 
 // Get payment methods
-router.get('/methods', authenticate, paymentController.getPaymentMethods);
+router.get('/methods', paymentController.getPaymentMethods);
 
 export default router;
 

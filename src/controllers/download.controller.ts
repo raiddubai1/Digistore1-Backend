@@ -4,6 +4,35 @@ import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth';
 import crypto from 'crypto';
 
+// Get user's downloads
+export const getMyDownloads = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user) throw new AppError('Not authenticated', 401);
+
+    const downloads = await prisma.download.findMany({
+      where: { userId: req.user.id },
+      include: {
+        product: {
+          select: {
+            id: true,
+            title: true,
+            thumbnail: true,
+            slug: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({
+      success: true,
+      data: { downloads },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const generateDownloadLink = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     if (!req.user) throw new AppError('Not authenticated', 401);

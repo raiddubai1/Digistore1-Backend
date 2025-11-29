@@ -61,5 +61,21 @@ router.post(
   authController.resetPassword
 );
 
+// Social login - Google
+router.post(
+  '/google',
+  [body('token').notEmpty()],
+  validate,
+  authController.googleLogin
+);
+
+// Social login - GitHub
+router.post(
+  '/github',
+  [body('code').notEmpty()],
+  validate,
+  authController.githubLogin
+);
+
 export default router;
 

@@ -1,15 +1,283 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth';
+import { prisma } from '../lib/prisma';
+import { createPayPalOrder, capturePayPalPayment, verifyPayPalWebhook } from '../config/paypal';
+import { OrderStatus } from '@prisma/client';
+import { sendOrderConfirmationEmail } from '../services/email.service';
 
+// Create PayPal order
+export const createPayPalOrderHandler = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { items, totalAmount, currency = 'USD', couponCode } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      throw new AppError('Cart items are required', 400);
+    }
+
+    // Create PayPal order
+    const paypalOrder = await createPayPalOrder(
+      totalAmount,
+      currency,
+      items.map((item: any) => ({
+        name: item.name,
+        quantity: item.quantity,
+        unit_amount: item.price,
+      }))
+    );
+
+    res.json({
+      success: true,
+      data: {
+        orderId: paypalOrder.id,
+        approvalUrl: paypalOrder.links.find((link: any) => link.rel === 'approve')?.href,
+      },
+    });
+  } catch (error: any) {
+    console.error('PayPal order creation error:', error.response?.data || error.message);
+    next(new AppError('Failed to create PayPal order', 500));
+  }
+};
+
+// Capture PayPal payment and create order
+export const capturePayPalOrderHandler = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { paypalOrderId, items, billingInfo, couponCode } = req.body;
+
+    if (!paypalOrderId) {
+      throw new AppError('PayPal order ID is required', 400);
+    }
+
+    // Capture the payment
+    const captureData = await capturePayPalPayment(paypalOrderId);
+
+    if (captureData.status !== 'COMPLETED') {
+      throw new AppError('Payment was not completed', 400);
+    }
+
+    const capturedAmount = parseFloat(
+      captureData.purchase_units[0].payments.captures[0].amount.value
+    );
+    const currency = captureData.purchase_units[0].payments.captures[0].amount.currency_code;
+
+    // Get or create customer
+    let customerId = req.user?.id;
+    let customerEmail = billingInfo.email;
+
+    if (!customerId) {
+      // Guest checkout - find or create user
+      let user = await prisma.user.findUnique({
+        where: { email: customerEmail },
+      });
+
+      if (!user) {
+        // Create guest user
+        user = await prisma.user.create({
+          data: {
+            email: customerEmail,
+            name: `${billingInfo.firstName} ${billingInfo.lastName}`,
+            password: '', // Guest user, no password
+            role: 'CUSTOMER',
+            status: 'ACTIVE',
+          },
+        });
+
+        await prisma.customerProfile.create({
+          data: { userId: user.id },
+        });
+      }
+      customerId = user.id;
+    }
+
+    // Apply coupon if provided
+    let discountAmount = 0;
+    let couponId: string | null = null;
+
+    if (couponCode) {
+      const coupon = await prisma.coupon.findUnique({
+        where: { code: couponCode },
+      });
+
+      if (coupon && coupon.isActive && coupon.expiresAt > new Date()) {
+        if (coupon.usageCount < coupon.usageLimit) {
+          if (coupon.type === 'PERCENTAGE') {
+            discountAmount = (capturedAmount * coupon.value) / 100;
+            if (coupon.maxDiscount) {
+              discountAmount = Math.min(discountAmount, coupon.maxDiscount);
+            }
+          } else {
+            discountAmount = coupon.value;
+          }
+          couponId = coupon.id;
+
+          // Update coupon usage
+          await prisma.coupon.update({
+            where: { id: coupon.id },
+            data: { usageCount: { increment: 1 } },
+          });
+        }
+      }
+    }
+
+    // Create order
+    const order = await prisma.order.create({
+      data: {
+        customerId,
+        status: OrderStatus.COMPLETED,
+        subtotal: capturedAmount + discountAmount,
+        discount: discountAmount,
+        total: capturedAmount,
+        currency,
+        paymentMethod: 'PAYPAL',
+        paymentId: paypalOrderId,
+        paymentStatus: 'PAID',
+        couponId,
+        billingEmail: customerEmail,
+        billingName: `${billingInfo.firstName} ${billingInfo.lastName}`,
+        billingCountry: billingInfo.country,
+        orderItems: {
+          create: items.map((item: any) => ({
+            productId: item.productId,
+            vendorId: item.vendorId,
+            quantity: item.quantity,
+            price: item.price,
+            license: item.license || 'personal',
+          })),
+        },
+      },
+      include: {
+        orderItems: {
+          include: { product: true },
+        },
+      },
+    });
+
+    // Create download records for digital products
+    for (const orderItem of order.orderItems) {
+      if (orderItem.product.downloadUrl) {
+        await prisma.download.create({
+          data: {
+            orderId: order.id,
+            productId: orderItem.productId,
+            userId: customerId,
+            downloadUrl: orderItem.product.downloadUrl,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+          },
+        });
+      }
+    }
+
+    // Update vendor sales stats
+    for (const item of items) {
+      if (item.vendorId) {
+        await prisma.vendorProfile.update({
+          where: { id: item.vendorId },
+          data: {
+            totalSales: { increment: item.quantity },
+            totalRevenue: { increment: item.price * item.quantity * 0.85 }, // 15% platform fee
+          },
+        });
+      }
+    }
+
+    // Send order confirmation email (non-blocking)
+    try {
+      await sendOrderConfirmationEmail(
+        customerEmail,
+        billingInfo.firstName,
+        {
+          id: order.id,
+          total: capturedAmount,
+          currency,
+          items: order.orderItems.map((item: any) => ({
+            title: item.product.title,
+            price: Number(item.price),
+            quantity: item.quantity,
+            license: item.license,
+          })),
+        }
+      );
+    } catch (emailError) {
+      console.error('Failed to send order confirmation email:', emailError);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        order: {
+          id: order.id,
+          status: order.status,
+          total: order.total,
+          currency: order.currency,
+        },
+        message: 'Payment successful! Your order has been placed.',
+      },
+    });
+  } catch (error: any) {
+    console.error('PayPal capture error:', error.response?.data || error.message);
+    next(new AppError(error.message || 'Failed to capture payment', 500));
+  }
+};
+
+// PayPal webhook handler
+export const handlePayPalWebhook = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const webhookId = process.env.PAYPAL_WEBHOOK_ID;
+
+    if (!webhookId) {
+      console.warn('PayPal webhook ID not configured');
+      return res.json({ received: true });
+    }
+
+    const isValid = await verifyPayPalWebhook(webhookId, req.body, req.headers);
+
+    if (!isValid) {
+      throw new AppError('Invalid webhook signature', 400);
+    }
+
+    const event = req.body;
+
+    switch (event.event_type) {
+      case 'PAYMENT.CAPTURE.COMPLETED':
+        // Payment was captured successfully
+        console.log('Payment captured:', event.resource.id);
+        break;
+
+      case 'PAYMENT.CAPTURE.DENIED':
+        // Payment was denied
+        const orderId = event.resource.supplementary_data?.related_ids?.order_id;
+        if (orderId) {
+          await prisma.order.updateMany({
+            where: { paymentId: orderId },
+            data: {
+              status: OrderStatus.CANCELLED,
+              paymentStatus: 'FAILED',
+            },
+          });
+        }
+        break;
+
+      case 'PAYMENT.CAPTURE.REFUNDED':
+        // Payment was refunded
+        console.log('Payment refunded:', event.resource.id);
+        break;
+    }
+
+    res.json({ received: true });
+  } catch (error) {
+    console.error('PayPal webhook error:', error);
+    next(error);
+  }
+};
+
+// Legacy Stripe handlers (kept for future implementation)
 export const createPaymentIntent = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     if (!req.user) throw new AppError('Not authenticated', 401);
-    
-    // TODO: Implement Stripe payment intent creation
+
     res.json({
       success: true,
-      message: 'Payment intent creation - to be implemented',
+      message: 'Stripe payment - coming soon. Please use PayPal.',
     });
   } catch (error) {
     next(error);
@@ -18,7 +286,6 @@ export const createPaymentIntent = async (req: AuthRequest, res: Response, next:
 
 export const handleWebhook = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // TODO: Implement Stripe webhook handling
     res.json({ received: true });
   } catch (error) {
     next(error);
@@ -27,11 +294,14 @@ export const handleWebhook = async (req: Request, res: Response, next: NextFunct
 
 export const getPaymentMethods = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    if (!req.user) throw new AppError('Not authenticated', 401);
-    
     res.json({
       success: true,
-      data: { methods: [] },
+      data: {
+        methods: [
+          { id: 'paypal', name: 'PayPal', enabled: true },
+          { id: 'stripe', name: 'Credit/Debit Card', enabled: false, comingSoon: true },
+        ]
+      },
     });
   } catch (error) {
     next(error);

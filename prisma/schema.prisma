@@ -38,6 +38,9 @@ model User {
   verificationToken String?
   resetToken        String?
   resetTokenExpiry  DateTime?
+  refreshToken      String?
+  googleId          String?     @unique
+  githubId          String?     @unique
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
@@ -48,6 +51,9 @@ model User {
   reviews           Review[]
   wishlist          Wishlist[]
   downloads         Download[]
+  referralsMade     Referral[]      @relation("ReferrerReferrals")
+  referredBy        Referral[]      @relation("ReferredByReferrals")
+  referralCode      String?         @unique
 
   @@index([email])
   @@index([role])
@@ -303,39 +309,44 @@ enum PaymentMethod {
 
 model Order {
   id                String        @id @default(cuid())
-  orderNumber       String        @unique
+  orderNumber       String        @unique @default(cuid())
 
   // Customer
-  userId            String
-  user              User          @relation(fields: [userId], references: [id])
+  customerId        String
+  customer          User          @relation(fields: [customerId], references: [id])
 
   // Pricing
   subtotal          Decimal       @db.Decimal(10, 2)
   discount          Decimal       @default(0) @db.Decimal(10, 2)
   total             Decimal       @db.Decimal(10, 2)
+  currency          String        @default("USD")
 
   // Payment
   status            OrderStatus   @default(PENDING)
   paymentMethod     PaymentMethod
   paymentId         String?
+  paymentStatus     String?       @default("PENDING") // PENDING, PAID, FAILED, REFUNDED
   stripePaymentIntentId String?   @unique
 
   // Coupon
+  couponId          String?
   couponCode        String?
 
   // Billing Info
   billingEmail      String
   billingName       String
   billingAddress    String?
+  billingCountry    String?
 
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   completedAt       DateTime?
 
   // Relations
-  items             OrderItem[]
+  orderItems        OrderItem[]
+  downloads         Download[]
 
-  @@index([userId])
+  @@index([customerId])
   @@index([orderNumber])
   @@index([status])
   @@index([stripePaymentIntentId])
@@ -351,20 +362,14 @@ model OrderItem {
   productId         String
   product           Product  @relation(fields: [productId], references: [id])
 
-  productTitle      String
-  productSlug       String
+  quantity          Int      @default(1)
   price             Decimal  @db.Decimal(10, 2)
-  license           LicenseType
+  license           String   @default("personal")
 
   // Vendor commission
-  vendorId          String
-  vendorRevenue     Decimal  @db.Decimal(10, 2)
-  platformFee       Decimal  @db.Decimal(10, 2)
+  vendorId          String?
 
   createdAt         DateTime @default(now())
-
-  // Relations
-  downloads         Download[]
 
   @@index([orderId])
   @@index([productId])
@@ -378,16 +383,16 @@ model OrderItem {
 model Download {
   id                String    @id @default(cuid())
 
+  orderId           String?
+  order             Order?    @relation(fields: [orderId], references: [id])
+
   userId            String
   user              User      @relation(fields: [userId], references: [id])
 
   productId         String
   product           Product   @relation(fields: [productId], references: [id])
 
-  orderItemId       String
-  orderItem         OrderItem @relation(fields: [orderItemId], references: [id])
-
-  downloadToken     String    @unique
+  downloadToken     String    @unique @default(cuid())
   downloadUrl       String?
   expiresAt         DateTime
   downloadCount     Int       @default(0)
@@ -400,6 +405,7 @@ model Download {
 
   @@index([userId])
   @@index([productId])
+  @@index([orderId])
   @@index([downloadToken])
   @@map("downloads")
 }
@@ -511,6 +517,38 @@ model Payout {
   @@index([vendorId])
   @@index([status])
   @@map("payouts")
+}
+
+// ============================================
+// REFERRAL/AFFILIATE SYSTEM
+// ============================================
+
+model Referral {
+  id                String        @id @default(cuid())
+  referrerId        String
+  referrer          User          @relation("ReferrerReferrals", fields: [referrerId], references: [id])
+  referredId        String?
+  referred          User?         @relation("ReferredByReferrals", fields: [referredId], references: [id])
+  referralCode      String        @unique
+  email             String?
+  status            ReferralStatus @default(PENDING)
+  commission        Decimal       @db.Decimal(10, 2) @default(0)
+  orderId           String?
+  clickCount        Int           @default(0)
+  createdAt         DateTime      @default(now())
+  convertedAt       DateTime?
+  paidAt            DateTime?
+
+  @@index([referrerId])
+  @@index([referralCode])
+  @@map("referrals")
+}
+
+enum ReferralStatus {
+  PENDING
+  CONVERTED
+  PAID
+  CANCELLED
 }
 
 // ============================================

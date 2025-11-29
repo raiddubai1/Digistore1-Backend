@@ -18,6 +18,9 @@ import reviewRoutes from './routes/review.routes';
 import downloadRoutes from './routes/download.routes';
 import paymentRoutes from './routes/payment.routes';
 import adminSetupRoutes from './routes/admin-setup.routes';
+import adminRoutes from './routes/admin.routes';
+import referralRoutes from './routes/referral.routes';
+import newsletterRoutes from './routes/newsletter.routes';
 import attributeRoutes from './routes/attribute.routes';
 import uploadRoutes from './routes/upload.routes';
 
@@ -91,6 +94,9 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/downloads', downloadRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/admin-setup', adminSetupRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/referrals', referralRoutes);
+app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/attributes', attributeRoutes);
 app.use('/api/upload', uploadRoutes);
 
