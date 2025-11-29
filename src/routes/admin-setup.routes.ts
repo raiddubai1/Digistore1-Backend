@@ -558,6 +558,169 @@ router.post('/categories', async (req, res) => {
   }
 });
 
+// Import from WooCommerce API
+router.post('/import-woocommerce', async (req, res) => {
+  try {
+    const { woocommerceUrl, consumerKey, consumerSecret, adminEmail } = req.body;
+
+    if (!woocommerceUrl || !consumerKey || !consumerSecret) {
+      return res.status(400).json({
+        success: false,
+        message: 'woocommerceUrl, consumerKey, and consumerSecret are required',
+      });
+    }
+
+    // Find vendor profile
+    const user = await prisma.user.findUnique({
+      where: { email: adminEmail || 'admin@digistore1.com' },
+      include: { vendorProfile: true },
+    });
+
+    if (!user?.vendorProfile) {
+      return res.status(404).json({
+        success: false,
+        message: 'Vendor profile not found. Run /setup-admin-vendor first.',
+      });
+    }
+
+    const vendorId = user.vendorProfile.id;
+    const results = { created: 0, skipped: 0, failed: 0, errors: [] as string[] };
+
+    // Fetch products from WooCommerce
+    let page = 1;
+    const perPage = 100;
+
+    while (true) {
+      const url = `${woocommerceUrl}/wp-json/wc/v3/products?page=${page}&per_page=${perPage}&status=publish`;
+
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': 'Basic ' + Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64'),
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`WooCommerce API error: ${response.status} ${response.statusText}`);
+      }
+
+      const products = await response.json() as any[];
+
+      if (!products || !Array.isArray(products) || products.length === 0) {
+        break;
+      }
+
+      for (const wooProduct of products) {
+        try {
+          // Generate slug
+          let slug = wooProduct.slug || wooProduct.name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)/g, '');
+
+          // Check if already exists
+          const existing = await prisma.product.findUnique({ where: { slug } });
+          if (existing) {
+            results.skipped++;
+            continue;
+          }
+
+          // Get or create category
+          let categoryId: string;
+          const wooCategory = wooProduct.categories?.[0];
+          if (wooCategory) {
+            const catSlug = wooCategory.slug || wooCategory.name
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/(^-|-$)/g, '');
+
+            let category = await prisma.category.findUnique({ where: { slug: catSlug } });
+            if (!category) {
+              category = await prisma.category.create({
+                data: {
+                  name: wooCategory.name,
+                  slug: catSlug,
+                  description: `Products in ${wooCategory.name}`,
+                },
+              });
+            }
+            categoryId = category.id;
+          } else {
+            let uncategorized = await prisma.category.findUnique({ where: { slug: 'uncategorized' } });
+            if (!uncategorized) {
+              uncategorized = await prisma.category.create({
+                data: { name: 'Uncategorized', slug: 'uncategorized', description: 'Uncategorized products' },
+              });
+            }
+            categoryId = uncategorized.id;
+          }
+
+          // Strip HTML from description
+          const stripHtml = (html: string) => html
+            .replace(/<[^>]*>/g, '')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .trim();
+
+          const price = parseFloat(wooProduct.price) || 0;
+          const regularPrice = parseFloat(wooProduct.regular_price) || price;
+          const discount = regularPrice > price ? Math.round((1 - price / regularPrice) * 100) : 0;
+
+          await prisma.product.create({
+            data: {
+              title: wooProduct.name,
+              slug,
+              description: stripHtml(wooProduct.description || wooProduct.name),
+              shortDescription: stripHtml(wooProduct.short_description || ''),
+              price,
+              originalPrice: regularPrice > price ? regularPrice : null,
+              discount,
+              categoryId,
+              tags: wooProduct.tags?.map((t: any) => t.name) || [],
+              fileType: wooProduct.downloadable ? 'pdf' : 'digital',
+              fileUrl: wooProduct.downloads?.[0]?.file || '',
+              fileName: wooProduct.downloads?.[0]?.name || 'product-file',
+              thumbnailUrl: wooProduct.images?.[0]?.src || '',
+              previewImages: wooProduct.images?.map((img: any) => img.src) || [],
+              featured: wooProduct.featured || false,
+              bestseller: (wooProduct.total_sales || 0) > 10,
+              newArrival: true,
+              status: ProductStatus.APPROVED,
+              vendorId,
+              rating: parseFloat(wooProduct.average_rating) || 0,
+              reviewCount: wooProduct.rating_count || 0,
+              downloadCount: wooProduct.total_sales || 0,
+              publishedAt: new Date(wooProduct.date_created || new Date()),
+            },
+          });
+
+          results.created++;
+        } catch (err: any) {
+          results.failed++;
+          results.errors.push(`${wooProduct.name}: ${err.message}`);
+        }
+      }
+
+      page++;
+    }
+
+    res.status(201).json({
+      success: true,
+      message: `WooCommerce import complete: ${results.created} created, ${results.skipped} skipped, ${results.failed} failed`,
+      data: results,
+    });
+  } catch (error: any) {
+    console.error('WooCommerce import error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to import from WooCommerce',
+    });
+  }
+});
+
 // Bulk import products (for WooCommerce migration)
 router.post('/import-products', async (req, res) => {
   try {
