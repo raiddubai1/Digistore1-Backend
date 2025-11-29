@@ -14,6 +14,7 @@
     "seed:production": "npx tsx scripts/seed-production.ts",
     "clear:products": "npx tsx scripts/clear-products.ts",
     "create-admin": "npx tsx scripts/create-admin.ts",
+    "import:woocommerce": "npx tsx scripts/woocommerce-import.ts",
     "lint": "eslint src --ext .ts",
     "test": "jest"
   },
