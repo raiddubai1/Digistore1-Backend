@@ -441,5 +441,253 @@ router.delete('/clear-products', async (req, res) => {
   }
 });
 
+// Setup vendor profile for admin user - allows admin to create products
+router.post('/setup-admin-vendor', async (req, res) => {
+  try {
+    const { email, businessName } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required',
+      });
+    }
+
+    // Find user
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { vendorProfile: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Check if vendor profile already exists
+    if (user.vendorProfile) {
+      return res.json({
+        success: true,
+        message: 'Vendor profile already exists',
+        data: { vendorProfile: user.vendorProfile },
+      });
+    }
+
+    // Create vendor profile
+    const vendorProfile = await prisma.vendorProfile.create({
+      data: {
+        userId: user.id,
+        businessName: businessName || 'Digistore1 Admin',
+        businessEmail: email,
+        description: 'Official store products',
+        autoApproveProducts: true, // Admin products auto-approved
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Vendor profile created successfully',
+      data: { vendorProfile },
+    });
+  } catch (error: any) {
+    console.error('Setup admin vendor error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to setup admin vendor',
+    });
+  }
+});
+
+// Get all categories
+router.get('/categories', async (req, res) => {
+  try {
+    const categories = await prisma.category.findMany({
+      where: { active: true },
+      orderBy: { order: 'asc' },
+    });
+
+    res.json({
+      success: true,
+      data: { categories },
+    });
+  } catch (error: any) {
+    console.error('Get categories error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get categories',
+    });
+  }
+});
+
+// Create category
+router.post('/categories', async (req, res) => {
+  try {
+    const { name, slug, description, icon, image, order } = req.body;
+
+    if (!name || !slug) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name and slug are required',
+      });
+    }
+
+    const category = await prisma.category.create({
+      data: {
+        name,
+        slug,
+        description,
+        icon,
+        image,
+        order: order || 0,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Category created successfully',
+      data: { category },
+    });
+  } catch (error: any) {
+    console.error('Create category error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create category',
+    });
+  }
+});
+
+// Bulk import products (for WooCommerce migration)
+router.post('/import-products', async (req, res) => {
+  try {
+    const { products, vendorEmail } = req.body;
+
+    if (!products || !Array.isArray(products)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Products array is required',
+      });
+    }
+
+    // Find vendor profile
+    const user = await prisma.user.findUnique({
+      where: { email: vendorEmail || 'admin@digistore1.com' },
+      include: { vendorProfile: true },
+    });
+
+    if (!user?.vendorProfile) {
+      return res.status(404).json({
+        success: false,
+        message: 'Vendor profile not found. Run /setup-admin-vendor first.',
+      });
+    }
+
+    const vendorId = user.vendorProfile.id;
+    const results = { created: 0, failed: 0, errors: [] as string[] };
+
+    for (const product of products) {
+      try {
+        // Generate unique slug
+        let slug = product.slug || product.title
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '');
+
+        // Check if slug exists, append number if so
+        const existingSlug = await prisma.product.findUnique({ where: { slug } });
+        if (existingSlug) {
+          slug = `${slug}-${Date.now()}`;
+        }
+
+        // Find or create category
+        let categoryId = product.categoryId;
+        if (!categoryId && product.categoryName) {
+          const categorySlug = product.categoryName
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)/g, '');
+
+          let category = await prisma.category.findUnique({ where: { slug: categorySlug } });
+          if (!category) {
+            category = await prisma.category.create({
+              data: {
+                name: product.categoryName,
+                slug: categorySlug,
+                description: `Products in ${product.categoryName}`,
+              },
+            });
+          }
+          categoryId = category.id;
+        }
+
+        // Use default category if none specified
+        if (!categoryId) {
+          let defaultCategory = await prisma.category.findUnique({ where: { slug: 'uncategorized' } });
+          if (!defaultCategory) {
+            defaultCategory = await prisma.category.create({
+              data: {
+                name: 'Uncategorized',
+                slug: 'uncategorized',
+                description: 'Uncategorized products',
+              },
+            });
+          }
+          categoryId = defaultCategory.id;
+        }
+
+        await prisma.product.create({
+          data: {
+            title: product.title || product.name,
+            slug,
+            description: product.description || '',
+            shortDescription: product.shortDescription || product.short_description || '',
+            price: parseFloat(product.price) || 0,
+            originalPrice: product.originalPrice ? parseFloat(product.originalPrice) : null,
+            discount: product.discount || 0,
+            categoryId,
+            subcategory: product.subcategory || null,
+            tags: product.tags || [],
+            fileType: product.fileType || 'pdf',
+            fileSize: product.fileSize ? BigInt(product.fileSize) : null,
+            fileUrl: product.fileUrl || product.downloadUrl || '',
+            fileName: product.fileName || 'product-file',
+            thumbnailUrl: product.thumbnailUrl || product.image || product.images?.[0] || '',
+            previewImages: product.previewImages || product.images || [],
+            whatsIncluded: product.whatsIncluded || [],
+            requirements: product.requirements || [],
+            featured: product.featured || false,
+            bestseller: product.bestseller || false,
+            newArrival: product.newArrival || true,
+            status: ProductStatus.APPROVED,
+            vendorId,
+            rating: product.rating || 0,
+            reviewCount: product.reviewCount || 0,
+            downloadCount: product.downloadCount || 0,
+            publishedAt: new Date(),
+          },
+        });
+
+        results.created++;
+      } catch (err: any) {
+        results.failed++;
+        results.errors.push(`${product.title}: ${err.message}`);
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      message: `Imported ${results.created} products, ${results.failed} failed`,
+      data: results,
+    });
+  } catch (error: any) {
+    console.error('Import products error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to import products',
+    });
+  }
+});
+
 export default router;
 
