@@ -356,6 +356,60 @@ router.post('/create-admin', async (req, res) => {
   }
 });
 
+// Reset admin password endpoint
+router.post('/reset-admin-password', async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and newPassword are required',
+      });
+    }
+
+    // Find user
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Hash new password
+    const hashedPassword = await hashPassword(newPassword);
+
+    // Update password
+    await prisma.user.update({
+      where: { email },
+      data: {
+        password: hashedPassword,
+        status: 'ACTIVE',
+        emailVerified: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully',
+      data: {
+        email,
+        note: 'You can now login with your new password',
+      },
+    });
+  } catch (error: any) {
+    console.error('Password reset error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to reset password',
+    });
+  }
+});
+
 // Clear all products endpoint - useful for re-seeding
 router.delete('/clear-products', async (req, res) => {
   try {
