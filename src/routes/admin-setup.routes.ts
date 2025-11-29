@@ -1036,16 +1036,71 @@ router.post('/reorganize-categories', async (req, res) => {
       }
     }
 
+    // Create attributes
+    await prisma.attribute.deleteMany({});
+
+    const attributeDefs = [
+      {
+        name: 'File Format',
+        slug: 'file-format',
+        description: 'The format of the digital file',
+        type: 'SELECT' as const,
+        options: ['PDF', 'PSD', 'LRTEMPLATE', 'PNG', 'JPG', 'MP4', 'AI', 'Canva', 'ZIP'],
+        required: true,
+        order: 1,
+      },
+      {
+        name: 'License Type',
+        slug: 'license-type',
+        description: 'Usage license for the product',
+        type: 'SELECT' as const,
+        options: ['Personal Use', 'Commercial Use', 'Extended License'],
+        required: true,
+        order: 2,
+      },
+      {
+        name: 'Software Required',
+        slug: 'software-required',
+        description: 'Software needed to use this product',
+        type: 'MULTISELECT' as const,
+        options: ['None', 'Adobe Lightroom', 'Adobe Photoshop', 'Canva', 'Any PDF Reader', 'Video Player'],
+        required: false,
+        order: 3,
+      },
+      {
+        name: 'Items Included',
+        slug: 'items-included',
+        description: 'Number of items, pages, or presets included',
+        type: 'TEXT' as const,
+        options: [],
+        required: false,
+        order: 4,
+      },
+    ];
+
+    for (const attr of attributeDefs) {
+      await prisma.attribute.create({
+        data: {
+          ...attr,
+          active: true,
+        },
+      });
+    }
+
     // Get final count
     const categories = await prisma.category.findMany({
       include: { _count: { select: { products: true } } },
       orderBy: { order: 'asc' },
     });
 
+    const attributes = await prisma.attribute.findMany({
+      orderBy: { order: 'asc' },
+    });
+
     res.json({
       success: true,
-      message: `Categories reorganized: ${categories.length} categories created, ${reassigned} products reassigned`,
-      data: { categories },
+      message: `Reorganized: ${categories.length} categories, ${reassigned} products reassigned, ${attributes.length} attributes created`,
+      data: { categories, attributes },
     });
 
   } catch (error: any) {
