@@ -971,13 +971,32 @@ router.post('/reorganize-categories', async (req, res) => {
       select: { id: true, title: true, description: true },
     });
 
-    // Unassign all products from categories first (to avoid foreign key constraint)
+    // Create a temporary "Uncategorized" category to hold products during migration
+    let tempCategory = await prisma.category.findFirst({
+      where: { slug: 'uncategorized-temp' },
+    });
+    if (!tempCategory) {
+      tempCategory = await prisma.category.create({
+        data: {
+          name: 'Uncategorized',
+          slug: 'uncategorized-temp',
+          description: 'Temporary category for migration',
+          order: 999,
+          active: false,
+        },
+      });
+    }
+
+    // Move all products to temp category
     await prisma.product.updateMany({
-      data: { categoryId: null },
+      where: { categoryId: { not: tempCategory.id } },
+      data: { categoryId: tempCategory.id },
     });
 
-    // Delete all existing categories
-    await prisma.category.deleteMany({});
+    // Delete all categories except temp
+    await prisma.category.deleteMany({
+      where: { id: { not: tempCategory.id } },
+    });
 
     // Create new categories and subcategories
     const categoryMap: Record<string, { id: string; keywords: string[] }> = {};
@@ -1040,6 +1059,17 @@ router.post('/reorganize-categories', async (req, res) => {
         reassigned++;
       }
     }
+
+    // Delete the temp category (any remaining products stay orphaned but that shouldn't happen)
+    await prisma.category.delete({
+      where: { id: tempCategory.id },
+    }).catch(() => {
+      // If products still reference it, just deactivate it
+      return prisma.category.update({
+        where: { id: tempCategory.id },
+        data: { active: false, name: 'Uncategorized', slug: 'uncategorized' },
+      });
+    });
 
     // Create attributes
     await prisma.attribute.deleteMany({});
