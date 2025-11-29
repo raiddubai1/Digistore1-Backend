@@ -971,6 +971,11 @@ router.post('/reorganize-categories', async (req, res) => {
       select: { id: true, title: true, description: true },
     });
 
+    // Unassign all products from categories first (to avoid foreign key constraint)
+    await prisma.product.updateMany({
+      data: { categoryId: null },
+    });
+
     // Delete all existing categories
     await prisma.category.deleteMany({});
 
