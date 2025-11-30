@@ -9,6 +9,9 @@ router.post('/paypal/create-order', optionalAuth, paymentController.createPayPal
 router.post('/paypal/capture-order', optionalAuth, paymentController.capturePayPalOrderHandler);
 router.post('/paypal/webhook', paymentController.handlePayPalWebhook);
 
+// Free order (for $0 products)
+router.post('/free-order', optionalAuth, paymentController.createFreeOrder);
+
 // Legacy Stripe routes (for future)
 router.post('/create-intent', authenticate, paymentController.createPaymentIntent);
 router.post('/webhook', paymentController.handleWebhook);

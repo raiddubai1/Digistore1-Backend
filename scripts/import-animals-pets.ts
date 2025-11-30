@@ -15,10 +15,14 @@ cloudinary.config({
   api_secret: 'jV0AimbMSA9YDUO7upTRv2CNs70',
 });
 
-const SOURCE_DIR = '/Volumes/SallnyHD/Digistore1/temp_import/animals_pets';
-const API_URL = 'https://digistore1-backend.onrender.com/api';
+// ============ UPDATE THESE FOR EACH IMPORT ============
+const SOURCE_DIR = '/Volumes/Raid1/Users/raidf/Downloads/ALL ABOUT CATS';
+const CATEGORY_NAME = 'All About Cats';
+const CATEGORY_SLUG = 'all-about-cats';
+const CLOUDINARY_FOLDER = 'digistore1/ebooks/all-about-cats';
+// =======================================================
 
-// You need to get this token by logging in as admin
+const API_URL = 'https://digistore1-backend.onrender.com/api';
 let ADMIN_TOKEN = '';
 
 function cleanProductName(filename: string): string {
@@ -39,7 +43,7 @@ function generateSlug(name: string): string {
 
 async function uploadToCloudinary(filePath: string): Promise<{ url: string; publicId: string }> {
   const result = await cloudinary.uploader.upload(filePath, {
-    folder: 'digistore1/ebooks/animals-pets',
+    folder: CLOUDINARY_FOLDER,
     resource_type: 'auto',
   });
   return {
@@ -69,24 +73,23 @@ async function findOrCreateCategory(token: string): Promise<string> {
   const responseData = res.data.data || res.data;
   const categories = Array.isArray(responseData) ? responseData : (responseData.categories || []);
 
-  let category = categories.find((c: any) => c.slug === 'animals-pets');
+  let category = categories.find((c: any) => c.slug === CATEGORY_SLUG);
 
   if (!category) {
     // Create category - POST /api/categories (not /admin/categories)
     const createRes = await axios.post(`${API_URL}/categories`, {
-      name: 'Animals & Pets',
-      slug: 'animals-pets',
-      description: 'eBooks about pets, animals, dog training, cat care, and more',
-      image: 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=400',
+      name: CATEGORY_NAME,
+      slug: CATEGORY_SLUG,
+      description: `Free eBooks about ${CATEGORY_NAME.toLowerCase()}`,
+      image: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=400',
     }, {
       headers: { Authorization: `Bearer ${token}` }
     });
     // Handle different response formats
     category = createRes.data.data || createRes.data.category || createRes.data;
-    console.log('✅ Created category: Animals & Pets');
-    console.log('Category response:', JSON.stringify(createRes.data, null, 2));
+    console.log(`✅ Created category: ${CATEGORY_NAME}`);
   } else {
-    console.log('✅ Found existing category: Animals & Pets');
+    console.log(`✅ Found existing category: ${CATEGORY_NAME}`);
   }
 
   if (!category || !category.id) {
@@ -94,7 +97,7 @@ async function findOrCreateCategory(token: string): Promise<string> {
     const refetchRes = await axios.get(`${API_URL}/categories`);
     const refetchData = refetchRes.data.data || refetchRes.data;
     const allCategories = Array.isArray(refetchData) ? refetchData : (refetchData.categories || []);
-    category = allCategories.find((c: any) => c.slug === 'animals-pets');
+    category = allCategories.find((c: any) => c.slug === CATEGORY_SLUG);
   }
 
   if (!category || !category.id) {
@@ -180,22 +183,12 @@ async function main() {
       console.log(`  Creating product...`);
       const created = await createProduct(ADMIN_TOKEN, {
         title: productName,
-        slug,
-        description: `Digital eBook: ${productName}. Learn about pets and animals with this comprehensive guide. Instant download after purchase.`,
-        shortDescription: `${productName} - Digital eBook`,
+        description: `Digital eBook: ${productName}. A comprehensive guide with valuable information. Instant download after purchase.`,
         price: 0,
-        originalPrice: 0,
         categoryId,
         thumbnailUrl,
-        previewImages: [thumbnailUrl],
         fileUrl: upload.url,
-        fileName,
-        fileType: 'PDF',
-        fileSize,
-        status: 'APPROVED',
-        featured: false,
-        bestseller: false,
-        newArrival: true,
+        fileType: 'pdf',
       });
 
       if (created) {

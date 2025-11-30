@@ -308,3 +308,127 @@ export const getPaymentMethods = async (req: AuthRequest, res: Response, next: N
   }
 };
 
+// Create free order (for $0 products)
+export const createFreeOrder = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { items, billingInfo } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      throw new AppError('Cart items are required', 400);
+    }
+
+    // Validate all items are free
+    for (const item of items) {
+      const product = await prisma.product.findUnique({
+        where: { id: item.productId },
+      });
+
+      if (!product) {
+        throw new AppError(`Product not found: ${item.productId}`, 404);
+      }
+
+      if (Number(product.price) > 0) {
+        throw new AppError('Free order endpoint cannot process paid products', 400);
+      }
+    }
+
+    // Get or create customer
+    let customerId = req.user?.id;
+    let customerEmail = billingInfo.email;
+
+    if (!customerId) {
+      // Guest checkout - find or create user
+      let user = await prisma.user.findUnique({
+        where: { email: customerEmail },
+      });
+
+      if (!user) {
+        // Create guest user
+        user = await prisma.user.create({
+          data: {
+            email: customerEmail,
+            name: `${billingInfo.firstName} ${billingInfo.lastName}`,
+            password: '', // Guest user, no password
+            role: 'CUSTOMER',
+            status: 'ACTIVE',
+          },
+        });
+
+        await prisma.customerProfile.create({
+          data: { userId: user.id },
+        });
+      }
+      customerId = user.id;
+    }
+
+    // Create order
+    const order = await prisma.order.create({
+      data: {
+        customerId,
+        status: OrderStatus.COMPLETED,
+        subtotal: 0,
+        discount: 0,
+        total: 0,
+        currency: 'USD',
+        paymentMethod: 'FREE',
+        paymentStatus: 'PAID',
+        billingEmail: customerEmail,
+        billingName: `${billingInfo.firstName} ${billingInfo.lastName}`,
+        billingCountry: billingInfo.country,
+        orderItems: {
+          create: items.map((item: any) => ({
+            productId: item.productId,
+            vendorId: item.vendorId,
+            quantity: item.quantity || 1,
+            price: 0,
+            license: item.license || 'personal',
+          })),
+        },
+      },
+      include: {
+        orderItems: {
+          include: { product: true },
+        },
+      },
+    });
+
+    // Create download records for digital products
+    for (const orderItem of order.orderItems) {
+      if (orderItem.product.fileUrl) {
+        await prisma.download.create({
+          data: {
+            orderId: order.id,
+            productId: orderItem.productId,
+            userId: customerId,
+            downloadUrl: orderItem.product.fileUrl,
+            expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year for free products
+          },
+        });
+      }
+    }
+
+    // Update product download counts
+    for (const orderItem of order.orderItems) {
+      await prisma.product.update({
+        where: { id: orderItem.productId },
+        data: { downloadCount: { increment: 1 } },
+      });
+    }
+
+    // Send confirmation email
+    try {
+      await sendOrderConfirmationEmail(order, customerEmail);
+    } catch (emailError) {
+      console.error('Failed to send order confirmation email:', emailError);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Free order completed successfully',
+      data: { order },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
