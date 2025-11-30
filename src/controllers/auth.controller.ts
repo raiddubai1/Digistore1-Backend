@@ -386,17 +386,25 @@ export const googleLogin = async (req: Request, res: Response, next: NextFunctio
   try {
     const { token } = req.body;
 
+    if (!token) {
+      throw new AppError('Token is required', 400);
+    }
+
     // Verify Google token
+    console.log('Verifying Google token...');
     const googleResponse = await fetch(
       `https://oauth2.googleapis.com/tokeninfo?id_token=${token}`
     );
 
     if (!googleResponse.ok) {
+      const errorText = await googleResponse.text();
+      console.error('Google token verification failed:', errorText);
       throw new AppError('Invalid Google token', 401);
     }
 
     const googleUser = await googleResponse.json() as { email?: string; name?: string; picture?: string; sub?: string };
     const { email, name, picture, sub: googleId } = googleUser;
+    console.log('Google user email:', email);
 
     if (!email) {
       throw new AppError('Email not provided by Google', 400);
@@ -407,6 +415,7 @@ export const googleLogin = async (req: Request, res: Response, next: NextFunctio
 
     if (!user) {
       // Create new user
+      console.log('Creating new user for:', email);
       user = await prisma.user.create({
         data: {
           email,
@@ -420,10 +429,13 @@ export const googleLogin = async (req: Request, res: Response, next: NextFunctio
       });
     } else if (!user.googleId) {
       // Link Google account to existing user
+      console.log('Linking Google to existing user:', email);
       user = await prisma.user.update({
         where: { id: user.id },
         data: { googleId, avatar: user.avatar || picture },
       });
+    } else {
+      console.log('User already exists with Google ID:', email);
     }
 
     // Generate tokens
@@ -436,6 +448,7 @@ export const googleLogin = async (req: Request, res: Response, next: NextFunctio
       data: { refreshToken },
     });
 
+    console.log('Google login successful for:', email);
     res.json({
       success: true,
       data: {
@@ -444,7 +457,8 @@ export const googleLogin = async (req: Request, res: Response, next: NextFunctio
         refreshToken,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
+    console.error('Google login error:', error.message || error);
     next(error);
   }
 };
