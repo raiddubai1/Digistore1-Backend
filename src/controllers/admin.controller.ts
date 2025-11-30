@@ -130,12 +130,25 @@ export const getAllCustomers = async (req: AuthRequest, res: Response, next: Nex
       throw new AppError('Not authorized', 403);
     }
 
-    const { page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 20, search, status } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
+
+    const where: any = { role: 'CUSTOMER' };
+
+    if (search) {
+      where.OR = [
+        { name: { contains: String(search), mode: 'insensitive' } },
+        { email: { contains: String(search), mode: 'insensitive' } },
+      ];
+    }
+
+    if (status) {
+      where.status = status;
+    }
 
     const [customers, total] = await Promise.all([
       prisma.user.findMany({
-        where: { role: 'CUSTOMER' },
+        where,
         skip,
         take: Number(limit),
         orderBy: { createdAt: 'desc' },
@@ -146,15 +159,45 @@ export const getAllCustomers = async (req: AuthRequest, res: Response, next: Nex
           status: true,
           createdAt: true,
           _count: { select: { orders: true } },
+          orders: {
+            select: { total: true, createdAt: true },
+            orderBy: { createdAt: 'desc' },
+          },
         },
       }),
-      prisma.user.count({ where: { role: 'CUSTOMER' } }),
+      prisma.user.count({ where }),
     ]);
+
+    // Calculate stats
+    const activeCount = await prisma.user.count({ where: { role: 'CUSTOMER', status: 'ACTIVE' } });
+    const thisMonth = new Date();
+    thisMonth.setDate(1);
+    thisMonth.setHours(0, 0, 0, 0);
+    const newThisMonth = await prisma.user.count({
+      where: { role: 'CUSTOMER', createdAt: { gte: thisMonth } },
+    });
+
+    // Calculate total spent for each customer
+    const customersWithStats = customers.map(customer => {
+      const totalSpent = customer.orders.reduce((sum, order) => sum + Number(order.total), 0);
+      const lastPurchase = customer.orders[0]?.createdAt || null;
+      return {
+        ...customer,
+        totalSpent,
+        lastPurchase,
+        totalOrders: customer._count.orders,
+      };
+    });
 
     res.json({
       success: true,
       data: {
-        customers,
+        customers: customersWithStats,
+        stats: {
+          total,
+          active: activeCount,
+          newThisMonth,
+        },
         pagination: {
           page: Number(page),
           limit: Number(limit),
@@ -168,3 +211,212 @@ export const getAllCustomers = async (req: AuthRequest, res: Response, next: Nex
   }
 };
 
+// Get all vendors (admin)
+export const getAllVendors = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user || req.user.role !== 'ADMIN') {
+      throw new AppError('Not authorized', 403);
+    }
+
+    const { page = 1, limit = 20, search, status } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const where: any = { role: 'VENDOR' };
+
+    if (search) {
+      where.OR = [
+        { name: { contains: String(search), mode: 'insensitive' } },
+        { email: { contains: String(search), mode: 'insensitive' } },
+        { vendorProfile: { businessName: { contains: String(search), mode: 'insensitive' } } },
+      ];
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    const [vendors, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        skip,
+        take: Number(limit),
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          status: true,
+          createdAt: true,
+          vendorProfile: {
+            select: {
+              id: true,
+              businessName: true,
+              businessEmail: true,
+              totalEarnings: true,
+              currentBalance: true,
+              _count: { select: { products: true } },
+            },
+          },
+        },
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    // Calculate stats
+    const activeCount = await prisma.user.count({ where: { role: 'VENDOR', status: 'ACTIVE' } });
+    const pendingCount = await prisma.user.count({ where: { role: 'VENDOR', status: 'PENDING' } });
+
+    res.json({
+      success: true,
+      data: {
+        vendors,
+        stats: {
+          total,
+          active: activeCount,
+          pending: pendingCount,
+        },
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          pages: Math.ceil(total / Number(limit)),
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update user status (admin)
+export const updateUserStatus = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user || req.user.role !== 'ADMIN') {
+      throw new AppError('Not authorized', 403);
+    }
+
+    const { userId } = req.params;
+    const { status } = req.body;
+
+    if (!['ACTIVE', 'SUSPENDED', 'PENDING'].includes(status)) {
+      throw new AppError('Invalid status', 400);
+    }
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { status },
+      select: { id: true, name: true, email: true, status: true },
+    });
+
+    res.json({
+      success: true,
+      data: { user },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get all reviews (admin)
+export const getAllReviews = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user || req.user.role !== 'ADMIN') {
+      throw new AppError('Not authorized', 403);
+    }
+
+    const { page = 1, limit = 20, verified } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const where: any = {};
+    if (verified === 'true') where.verified = true;
+    if (verified === 'false') where.verified = false;
+
+    const [reviews, total] = await Promise.all([
+      prisma.review.findMany({
+        where,
+        skip,
+        take: Number(limit),
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          product: { select: { id: true, title: true, slug: true } },
+        },
+      }),
+      prisma.review.count({ where }),
+    ]);
+
+    // Calculate stats
+    const [totalReviews, verifiedCount, avgRating] = await Promise.all([
+      prisma.review.count(),
+      prisma.review.count({ where: { verified: true } }),
+      prisma.review.aggregate({ _avg: { rating: true } }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        reviews,
+        stats: {
+          total: totalReviews,
+          verified: verifiedCount,
+          unverified: totalReviews - verifiedCount,
+          avgRating: avgRating._avg.rating || 0,
+        },
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          pages: Math.ceil(total / Number(limit)),
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Delete review (admin)
+export const deleteReview = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user || req.user.role !== 'ADMIN') {
+      throw new AppError('Not authorized', 403);
+    }
+
+    const { reviewId } = req.params;
+
+    await prisma.review.delete({ where: { id: reviewId } });
+
+    res.json({
+      success: true,
+      message: 'Review deleted successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Toggle review verified status (admin)
+export const toggleReviewVerified = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user || req.user.role !== 'ADMIN') {
+      throw new AppError('Not authorized', 403);
+    }
+
+    const { reviewId } = req.params;
+
+    const review = await prisma.review.findUnique({ where: { id: reviewId } });
+    if (!review) throw new AppError('Review not found', 404);
+
+    const updated = await prisma.review.update({
+      where: { id: reviewId },
+      data: { verified: !review.verified },
+    });
+
+    res.json({
+      success: true,
+      data: { review: updated },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
