@@ -130,8 +130,8 @@ function findAllPdfs(dir: string): string[] {
 
 async function createProduct(token: string, data: any): Promise<boolean> {
   try {
-    // POST /api/admin/products - admin endpoint for bulk imports
-    await axios.post(`${API_URL}/admin/products`, data, {
+    // POST /api/products - now works for admin users too
+    await axios.post(`${API_URL}/products`, data, {
       headers: { Authorization: `Bearer ${token}` }
     });
     return true;

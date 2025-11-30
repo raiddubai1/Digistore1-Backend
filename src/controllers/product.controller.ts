@@ -292,10 +292,30 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
       throw new AppError('Not authenticated', 401);
     }
 
-    // Get vendor profile
-    const vendorProfile = await prisma.vendorProfile.findUnique({
+    // Get or create vendor profile (for admin users, create a default one)
+    let vendorProfile = await prisma.vendorProfile.findUnique({
       where: { userId: req.user.id },
     });
+
+    if (!vendorProfile && req.user.role === 'ADMIN') {
+      // Check if "DigiStore Official" vendor already exists
+      vendorProfile = await prisma.vendorProfile.findFirst({
+        where: { businessName: 'DigiStore Official' },
+      });
+
+      if (!vendorProfile) {
+        // Create a default vendor profile for admin imports
+        vendorProfile = await prisma.vendorProfile.create({
+          data: {
+            userId: req.user.id,
+            businessName: 'DigiStore Official',
+            description: 'Official DigiStore products',
+            verified: true,
+            autoApproveProducts: true,
+          },
+        });
+      }
+    }
 
     if (!vendorProfile) {
       throw new AppError('Vendor profile not found', 404);
