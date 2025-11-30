@@ -1,12 +1,14 @@
 /**
  * Import Animals & Pets eBooks to Digistore1
- * Uploads PDFs to Cloudinary and creates products via API
+ * Uploads PDFs to Cloudinary and creates products DIRECTLY in database
  */
 
 import { v2 as cloudinary } from 'cloudinary';
 import * as fs from 'fs';
 import * as path from 'path';
-import axios from 'axios';
+import { PrismaClient, ProductStatus } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 // Configure Cloudinary
 cloudinary.config({
@@ -16,14 +18,11 @@ cloudinary.config({
 });
 
 // ============ UPDATE THESE FOR EACH IMPORT ============
-const SOURCE_DIR = '/Volumes/Raid1/Users/raidf/Downloads/ALL ABOUT CATS';
-const CATEGORY_NAME = 'All About Cats';
-const CATEGORY_SLUG = 'all-about-cats';
-const CLOUDINARY_FOLDER = 'digistore1/ebooks/all-about-cats';
+const SOURCE_DIR = '/Volumes/Raid1/Users/raidf/Downloads/ALL ABOUT DOGS';
+const CATEGORY_NAME = 'All About Dogs';
+const CATEGORY_SLUG = 'all-about-dogs';
+const CLOUDINARY_FOLDER = 'digistore1/ebooks/all-about-dogs';
 // =======================================================
-
-const API_URL = 'https://digistore1-backend.onrender.com/api';
-let ADMIN_TOKEN = '';
 
 function cleanProductName(filename: string): string {
   return filename
@@ -58,53 +57,63 @@ function generatePdfThumbnail(pdfUrl: string): string {
     .replace('.pdf', '.jpg');
 }
 
-async function loginAsAdmin(): Promise<string> {
-  console.log('Logging in as admin...');
-  const res = await axios.post(`${API_URL}/auth/login`, {
-    email: 'admin@digistore1.com',
-    password: 'admin123!',
-  });
-  return res.data.data.accessToken;
-}
-
-async function findOrCreateCategory(token: string): Promise<string> {
+async function findOrCreateCategory(): Promise<string> {
   // First try to find existing category
-  const res = await axios.get(`${API_URL}/categories`);
-  const responseData = res.data.data || res.data;
-  const categories = Array.isArray(responseData) ? responseData : (responseData.categories || []);
-
-  let category = categories.find((c: any) => c.slug === CATEGORY_SLUG);
+  let category = await prisma.category.findUnique({
+    where: { slug: CATEGORY_SLUG },
+  });
 
   if (!category) {
-    // Create category - POST /api/categories (not /admin/categories)
-    const createRes = await axios.post(`${API_URL}/categories`, {
-      name: CATEGORY_NAME,
-      slug: CATEGORY_SLUG,
-      description: `Free eBooks about ${CATEGORY_NAME.toLowerCase()}`,
-      image: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=400',
-    }, {
-      headers: { Authorization: `Bearer ${token}` }
+    // Create category directly in database
+    category = await prisma.category.create({
+      data: {
+        name: CATEGORY_NAME,
+        slug: CATEGORY_SLUG,
+        description: `Free eBooks about ${CATEGORY_NAME.toLowerCase()}`,
+        image: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=400',
+      },
     });
-    // Handle different response formats
-    category = createRes.data.data || createRes.data.category || createRes.data;
     console.log(`✅ Created category: ${CATEGORY_NAME}`);
   } else {
     console.log(`✅ Found existing category: ${CATEGORY_NAME}`);
   }
 
-  if (!category || !category.id) {
-    // Re-fetch categories to get the newly created one
-    const refetchRes = await axios.get(`${API_URL}/categories`);
-    const refetchData = refetchRes.data.data || refetchRes.data;
-    const allCategories = Array.isArray(refetchData) ? refetchData : (refetchData.categories || []);
-    category = allCategories.find((c: any) => c.slug === CATEGORY_SLUG);
-  }
-
-  if (!category || !category.id) {
-    throw new Error('Failed to get category ID');
-  }
-
   return category.id;
+}
+
+async function getOrCreateVendor(): Promise<string> {
+  // Find admin user
+  const admin = await prisma.user.findFirst({
+    where: { role: 'ADMIN' },
+    include: { vendorProfile: true },
+  });
+
+  if (!admin) {
+    throw new Error('No admin user found');
+  }
+
+  if (admin.vendorProfile) {
+    return admin.vendorProfile.id;
+  }
+
+  // Check if DigiStore Official vendor exists
+  let vendor = await prisma.vendorProfile.findFirst({
+    where: { businessName: 'DigiStore Official' },
+  });
+
+  if (!vendor) {
+    vendor = await prisma.vendorProfile.create({
+      data: {
+        userId: admin.id,
+        businessName: 'DigiStore Official',
+        description: 'Official DigiStore products',
+        verified: true,
+        autoApproveProducts: true,
+      },
+    });
+  }
+
+  return vendor.id;
 }
 
 function findAllPdfs(dir: string): string[] {
@@ -131,36 +140,16 @@ function findAllPdfs(dir: string): string[] {
   return pdfs;
 }
 
-async function createProduct(token: string, data: any): Promise<boolean> {
-  try {
-    // POST /api/products - now works for admin users too
-    await axios.post(`${API_URL}/products`, data, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    return true;
-  } catch (error: any) {
-    if (error.response?.status === 409 || error.response?.data?.message?.includes('exists')) {
-      return false; // Already exists
-    }
-    // Log detailed error
-    if (error.response) {
-      console.log(`    Error ${error.response.status}: ${JSON.stringify(error.response.data)}`);
-    }
-    throw error;
-  }
-}
-
 async function main() {
   console.log('\n========================================');
-  console.log('ANIMALS & PETS IMPORT (API Mode)');
+  console.log('EBOOK IMPORT (Direct Database Mode)');
   console.log('========================================\n');
 
-  // Login to get token
-  ADMIN_TOKEN = await loginAsAdmin();
-  console.log('✅ Logged in as admin\n');
-
-  const categoryId = await findOrCreateCategory(ADMIN_TOKEN);
+  const categoryId = await findOrCreateCategory();
   console.log(`Category ID: ${categoryId}\n`);
+
+  const vendorId = await getOrCreateVendor();
+  console.log(`Vendor ID: ${vendorId}\n`);
 
   const pdfFiles = findAllPdfs(SOURCE_DIR);
   console.log(`Found ${pdfFiles.length} PDF files\n`);
@@ -175,29 +164,46 @@ async function main() {
     console.log(`[${imported + skipped + failed + 1}/${pdfFiles.length}] ${fileName}`);
 
     try {
+      // Check if product already exists
+      const existing = await prisma.product.findUnique({
+        where: { slug },
+      });
+
+      if (existing) {
+        console.log(`  ⏭️  Skipped (exists)`);
+        skipped++;
+        continue;
+      }
+
       console.log(`  Uploading to Cloudinary...`);
       const upload = await uploadToCloudinary(filePath);
       const thumbnailUrl = generatePdfThumbnail(upload.url);
       const fileSize = fs.statSync(filePath).size;
 
-      console.log(`  Creating product...`);
-      const created = await createProduct(ADMIN_TOKEN, {
-        title: productName,
-        description: `Digital eBook: ${productName}. A comprehensive guide with valuable information. Instant download after purchase.`,
-        price: 0,
-        categoryId,
-        thumbnailUrl,
-        fileUrl: upload.url,
-        fileType: 'pdf',
+      console.log(`  Creating product in database...`);
+      await prisma.product.create({
+        data: {
+          title: productName,
+          slug,
+          description: `Digital eBook: ${productName}. A comprehensive guide with valuable information. Instant download after purchase.`,
+          price: 0,
+          categoryId,
+          vendorId,
+          thumbnailUrl,
+          fileUrl: upload.url,
+          fileType: 'pdf',
+          fileName: fileName,
+          fileSize: BigInt(fileSize),
+          status: ProductStatus.APPROVED,
+          tags: [],
+          previewImages: [],
+          whatsIncluded: ['Full eBook PDF'],
+          requirements: [],
+        },
       });
 
-      if (created) {
-        console.log(`  ✅ Imported: ${productName}`);
-        imported++;
-      } else {
-        console.log(`  ⏭️  Skipped (exists)`);
-        skipped++;
-      }
+      console.log(`  ✅ Imported: ${productName}`);
+      imported++;
     } catch (error: any) {
       console.log(`  ❌ Failed: ${error.message}`);
       failed++;
@@ -210,6 +216,8 @@ async function main() {
   console.log(`✅ Imported: ${imported}`);
   console.log(`⏭️  Skipped: ${skipped}`);
   console.log(`❌ Failed: ${failed}`);
+
+  await prisma.$disconnect();
 }
 
 main().catch(console.error);
