@@ -177,12 +177,16 @@ export const getAllCustomers = async (req: AuthRequest, res: Response, next: Nex
       where: { role: 'CUSTOMER', createdAt: { gte: thisMonth } },
     });
 
-    // Calculate total spent for each customer
+    // Calculate total spent for each customer and clean up response
     const customersWithStats = customers.map(customer => {
       const totalSpent = customer.orders.reduce((sum, order) => sum + Number(order.total), 0);
       const lastPurchase = customer.orders[0]?.createdAt || null;
       return {
-        ...customer,
+        id: customer.id,
+        name: customer.name,
+        email: customer.email,
+        status: customer.status,
+        createdAt: customer.createdAt,
         totalSpent,
         lastPurchase,
         totalOrders: customer._count.orders,
