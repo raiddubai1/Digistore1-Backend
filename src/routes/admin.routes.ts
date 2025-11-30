@@ -28,5 +28,8 @@ router.get('/reviews', adminController.getAllReviews);
 router.delete('/reviews/:reviewId', adminController.deleteReview);
 router.patch('/reviews/:reviewId/toggle-verified', adminController.toggleReviewVerified);
 
+// Product management (for bulk imports)
+router.post('/products', adminController.createProductAdmin);
+
 export default router;
 

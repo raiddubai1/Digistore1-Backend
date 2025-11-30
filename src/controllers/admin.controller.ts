@@ -424,3 +424,96 @@ export const toggleReviewVerified = async (req: AuthRequest, res: Response, next
     next(error);
   }
 };
+
+// Create product (admin) - for bulk imports without needing vendor profile
+export const createProductAdmin = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user || req.user.role !== 'ADMIN') {
+      throw new AppError('Not authorized', 403);
+    }
+
+    const {
+      title,
+      description,
+      shortDescription,
+      price,
+      originalPrice,
+      categoryId,
+      fileType,
+      fileSize,
+      fileUrl,
+      fileName,
+      thumbnailUrl,
+      previewImages,
+      status = 'APPROVED',
+    } = req.body;
+
+    // Generate slug from title
+    const slug = title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+
+    // Check if slug already exists
+    const existingProduct = await prisma.product.findUnique({
+      where: { slug },
+    });
+
+    if (existingProduct) {
+      throw new AppError('A product with this title already exists', 400);
+    }
+
+    // Get or create a default vendor profile for admin imports
+    let defaultVendor = await prisma.vendorProfile.findFirst({
+      where: { businessName: 'DigiStore Official' },
+    });
+
+    if (!defaultVendor) {
+      // Create a vendor profile for the admin user
+      defaultVendor = await prisma.vendorProfile.create({
+        data: {
+          userId: req.user.id,
+          businessName: 'DigiStore Official',
+          description: 'Official DigiStore store products',
+          verified: true,
+          autoApproveProducts: true,
+        },
+      });
+    }
+
+    // Create product
+    const product = await prisma.product.create({
+      data: {
+        title,
+        slug,
+        description,
+        shortDescription,
+        price,
+        originalPrice: originalPrice || price,
+        discount: originalPrice ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0,
+        categoryId,
+        fileType,
+        fileSize: fileSize ? BigInt(fileSize) : null,
+        fileUrl,
+        fileName,
+        thumbnailUrl,
+        previewImages: previewImages || [],
+        vendorId: defaultVendor.id,
+        status: status as any,
+        featured: false,
+        bestseller: false,
+        newArrival: true,
+      },
+      include: {
+        category: true,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      data: { product },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
