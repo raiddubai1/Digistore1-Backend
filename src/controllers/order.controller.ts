@@ -21,7 +21,7 @@ export const getMyOrders = async (req: AuthRequest, res: Response, next: NextFun
                 id: true,
                 title: true,
                 slug: true,
-                thumbnail: true,
+                thumbnailUrl: true,
               },
             },
           },
@@ -50,12 +50,12 @@ export const getOrderById = async (req: AuthRequest, res: Response, next: NextFu
     const order = await prisma.order.findUnique({
       where: { id },
       include: {
-        items: {
+        orderItems: {
           include: {
             product: true,
-            downloads: true,
           },
         },
+        downloads: true,
       },
     });
 
@@ -64,7 +64,7 @@ export const getOrderById = async (req: AuthRequest, res: Response, next: NextFu
     }
 
     // Check ownership
-    if (order.userId !== req.user.id && req.user.role !== 'ADMIN') {
+    if (order.customerId !== req.user.id && req.user.role !== 'ADMIN') {
       throw new AppError('You do not have permission to view this order', 403);
     }
 
@@ -130,19 +130,19 @@ export const createOrder = async (req: AuthRequest, res: Response, next: NextFun
     const order = await prisma.order.create({
       data: {
         orderNumber,
-        userId: req.user.id,
+        customerId: req.user.id,
         subtotal,
         total: subtotal,
         status: 'PENDING',
         paymentMethod: 'STRIPE',
         billingEmail: req.user.email,
         billingName: req.user.email,
-        items: {
+        orderItems: {
           create: orderItems,
         },
       },
       include: {
-        items: {
+        orderItems: {
           include: {
             product: true,
           },

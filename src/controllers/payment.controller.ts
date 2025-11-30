@@ -98,15 +98,15 @@ export const capturePayPalOrderHandler = async (req: AuthRequest, res: Response,
         where: { code: couponCode },
       });
 
-      if (coupon && coupon.isActive && coupon.expiresAt > new Date()) {
-        if (coupon.usageCount < coupon.usageLimit) {
+      if (coupon && coupon.active && (!coupon.expiresAt || coupon.expiresAt > new Date())) {
+        if (!coupon.usageLimit || coupon.usageCount < coupon.usageLimit) {
           if (coupon.type === 'PERCENTAGE') {
-            discountAmount = (capturedAmount * coupon.value) / 100;
+            discountAmount = (capturedAmount * Number(coupon.value)) / 100;
             if (coupon.maxDiscount) {
-              discountAmount = Math.min(discountAmount, coupon.maxDiscount);
+              discountAmount = Math.min(discountAmount, Number(coupon.maxDiscount));
             }
           } else {
-            discountAmount = coupon.value;
+            discountAmount = Number(coupon.value);
           }
           couponId = coupon.id;
 
@@ -154,13 +154,13 @@ export const capturePayPalOrderHandler = async (req: AuthRequest, res: Response,
 
     // Create download records for digital products
     for (const orderItem of order.orderItems) {
-      if (orderItem.product.downloadUrl) {
+      if (orderItem.product.fileUrl) {
         await prisma.download.create({
           data: {
             orderId: order.id,
             productId: orderItem.productId,
             userId: customerId,
-            downloadUrl: orderItem.product.downloadUrl,
+            downloadUrl: orderItem.product.fileUrl,
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
           },
         });

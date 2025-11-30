@@ -14,9 +14,10 @@ const createTransporter = () => {
 };
 
 // Send newsletter welcome email
-export const sendNewsletterWelcome = async (email: string) => {
+export const sendNewsletterWelcome = async (email: string, name?: string) => {
   const unsubscribeUrl = `${process.env.FRONTEND_URL}/unsubscribe?email=${encodeURIComponent(email)}`;
-  
+  const displayName = name || 'there';
+
   const content = `
 <!DOCTYPE html>
 <html>
@@ -38,7 +39,7 @@ export const sendNewsletterWelcome = async (email: string) => {
     </div>
     <div class="content">
       <h2>Welcome to Our Newsletter! 🎉</h2>
-      <p>Thank you for subscribing to the Digistore1 newsletter!</p>
+      <p>Hi ${displayName}, thank you for subscribing to the Digistore1 newsletter!</p>
       <p>You'll be the first to know about:</p>
       <ul>
         <li>🆕 New digital products</li>

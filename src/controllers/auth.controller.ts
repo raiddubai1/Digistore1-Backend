@@ -395,7 +395,7 @@ export const googleLogin = async (req: Request, res: Response, next: NextFunctio
       throw new AppError('Invalid Google token', 401);
     }
 
-    const googleUser = await googleResponse.json();
+    const googleUser = await googleResponse.json() as { email?: string; name?: string; picture?: string; sub?: string };
     const { email, name, picture, sub: googleId } = googleUser;
 
     if (!email) {
@@ -427,8 +427,8 @@ export const googleLogin = async (req: Request, res: Response, next: NextFunctio
     }
 
     // Generate tokens
-    const accessToken = generateAccessToken({ userId: user.id, role: user.role });
-    const refreshToken = generateRefreshToken({ userId: user.id });
+    const accessToken = generateAccessToken({ id: user.id, email: user.email, role: user.role });
+    const refreshToken = generateRefreshToken({ id: user.id, email: user.email, role: user.role });
 
     // Save refresh token
     await prisma.user.update({
@@ -468,7 +468,7 @@ export const githubLogin = async (req: Request, res: Response, next: NextFunctio
       }),
     });
 
-    const tokenData = await tokenResponse.json();
+    const tokenData = await tokenResponse.json() as { error?: string; access_token?: string };
     if (tokenData.error) {
       throw new AppError('Failed to authenticate with GitHub', 401);
     }
@@ -477,7 +477,7 @@ export const githubLogin = async (req: Request, res: Response, next: NextFunctio
     const userResponse = await fetch('https://api.github.com/user', {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
-    const githubUser = await userResponse.json();
+    const githubUser = await userResponse.json() as { id?: number; email?: string; name?: string; login?: string; avatar_url?: string };
 
     // Get email if not public
     let email = githubUser.email;
@@ -485,8 +485,8 @@ export const githubLogin = async (req: Request, res: Response, next: NextFunctio
       const emailsResponse = await fetch('https://api.github.com/user/emails', {
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
       });
-      const emails = await emailsResponse.json();
-      const primaryEmail = emails.find((e: any) => e.primary);
+      const emails = await emailsResponse.json() as Array<{ email: string; primary: boolean }>;
+      const primaryEmail = emails.find((e) => e.primary);
       email = primaryEmail?.email;
     }
 
@@ -501,7 +501,7 @@ export const githubLogin = async (req: Request, res: Response, next: NextFunctio
       user = await prisma.user.create({
         data: {
           email,
-          name: githubUser.name || githubUser.login,
+          name: githubUser.name || githubUser.login || email.split('@')[0],
           avatar: githubUser.avatar_url,
           githubId: String(githubUser.id),
           emailVerified: true,
@@ -517,8 +517,8 @@ export const githubLogin = async (req: Request, res: Response, next: NextFunctio
     }
 
     // Generate tokens
-    const accessToken = generateAccessToken({ userId: user.id, role: user.role });
-    const refreshToken = generateRefreshToken({ userId: user.id });
+    const accessToken = generateAccessToken({ id: user.id, email: user.email, role: user.role });
+    const refreshToken = generateRefreshToken({ id: user.id, email: user.email, role: user.role });
 
     await prisma.user.update({
       where: { id: user.id },

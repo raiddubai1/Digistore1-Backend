@@ -16,7 +16,7 @@ export const getMyDownloads = async (req: AuthRequest, res: Response, next: Next
           select: {
             id: true,
             title: true,
-            thumbnail: true,
+            thumbnailUrl: true,
             slug: true,
           },
         },
@@ -36,16 +36,16 @@ export const getMyDownloads = async (req: AuthRequest, res: Response, next: Next
 export const generateDownloadLink = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     if (!req.user) throw new AppError('Not authenticated', 401);
-    
+
     const { orderItemId } = req.params;
-    
+
     const orderItem = await prisma.orderItem.findUnique({
       where: { id: orderItemId },
       include: { order: true, product: true },
     });
 
     if (!orderItem) throw new AppError('Order item not found', 404);
-    if (orderItem.order.userId !== req.user.id) throw new AppError('Unauthorized', 403);
+    if (orderItem.order.customerId !== req.user.id) throw new AppError('Unauthorized', 403);
 
     const downloadToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
@@ -54,7 +54,7 @@ export const generateDownloadLink = async (req: AuthRequest, res: Response, next
       data: {
         userId: req.user.id,
         productId: orderItem.productId,
-        orderItemId: orderItem.id,
+        orderId: orderItem.orderId,
         downloadToken,
         expiresAt,
       },
