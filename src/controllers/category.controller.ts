@@ -12,6 +12,20 @@ export const getAllCategories = async (req: Request, res: Response, next: NextFu
         children: {
           where: { active: true },
           orderBy: { order: 'asc' },
+          include: {
+            children: {
+              where: { active: true },
+              orderBy: { order: 'asc' },
+              include: {
+                _count: {
+                  select: { products: true },
+                },
+              },
+            },
+            _count: {
+              select: { products: true },
+            },
+          },
         },
         _count: {
           select: { products: true },
@@ -39,8 +53,26 @@ export const getCategoryBySlug = async (req: Request, res: Response, next: NextF
         children: {
           where: { active: true },
           orderBy: { order: 'asc' },
+          include: {
+            children: {
+              where: { active: true },
+              orderBy: { order: 'asc' },
+              include: {
+                _count: {
+                  select: { products: true },
+                },
+              },
+            },
+            _count: {
+              select: { products: true },
+            },
+          },
         },
-        parent: true,
+        parent: {
+          include: {
+            parent: true, // Include grandparent for breadcrumbs
+          },
+        },
         _count: {
           select: { products: true },
         },
