@@ -309,6 +309,7 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
           data: {
             userId: req.user.id,
             businessName: 'DigiStore Official',
+            businessEmail: req.user.email || 'admin@digistore1.com',
             description: 'Official DigiStore products',
             verified: true,
             autoApproveProducts: true,

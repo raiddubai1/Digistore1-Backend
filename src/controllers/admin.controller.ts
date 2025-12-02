@@ -474,6 +474,7 @@ export const createProductAdmin = async (req: AuthRequest, res: Response, next: 
         data: {
           userId: req.user.id,
           businessName: 'DigiStore Official',
+          businessEmail: req.user.email || 'admin@digistore1.com',
           description: 'Official DigiStore store products',
           verified: true,
           autoApproveProducts: true,
