@@ -23,6 +23,7 @@ enum UserStatus {
   ACTIVE
   SUSPENDED
   PENDING_VERIFICATION
+  PENDING
 }
 
 model User {
@@ -79,12 +80,17 @@ model VendorProfile {
   stripeAccountId   String?  @unique
   stripeOnboarded   Boolean  @default(false)
   
+  // Verification
+  verified          Boolean  @default(false)
+
   // Stats
   totalSales        Decimal  @default(0) @db.Decimal(10, 2)
   totalRevenue      Decimal  @default(0) @db.Decimal(10, 2)
+  totalEarnings     Decimal  @default(0) @db.Decimal(10, 2)
   availableBalance  Decimal  @default(0) @db.Decimal(10, 2)
+  currentBalance    Decimal  @default(0) @db.Decimal(10, 2)
   pendingBalance    Decimal  @default(0) @db.Decimal(10, 2)
-  
+
   // Settings
   autoApproveProducts Boolean @default(false)
   notifyOnSale      Boolean  @default(true)
@@ -305,6 +311,7 @@ enum OrderStatus {
 enum PaymentMethod {
   STRIPE
   PAYPAL
+  FREE
 }
 
 model Order {

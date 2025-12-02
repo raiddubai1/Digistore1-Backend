@@ -3,7 +3,7 @@ import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { createPayPalOrder, capturePayPalPayment, verifyPayPalWebhook } from '../config/paypal';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, PaymentMethod } from '@prisma/client';
 import { sendOrderConfirmationEmail } from '../services/email.service';
 
 // Create PayPal order
@@ -370,7 +370,7 @@ export const createFreeOrder = async (req: AuthRequest, res: Response, next: Nex
         discount: 0,
         total: 0,
         currency: 'USD',
-        paymentMethod: 'FREE',
+        paymentMethod: PaymentMethod.FREE,
         paymentStatus: 'PAID',
         billingEmail: customerEmail,
         billingName: `${billingInfo.firstName} ${billingInfo.lastName}`,
@@ -417,7 +417,21 @@ export const createFreeOrder = async (req: AuthRequest, res: Response, next: Nex
 
     // Send confirmation email
     try {
-      await sendOrderConfirmationEmail(order, customerEmail);
+      await sendOrderConfirmationEmail(
+        customerEmail,
+        billingInfo.firstName,
+        {
+          id: order.id,
+          total: 0,
+          currency: 'USD',
+          items: order.orderItems.map((item: any) => ({
+            title: item.product.title,
+            price: 0,
+            quantity: item.quantity,
+            license: item.license,
+          })),
+        }
+      );
     } catch (emailError) {
       console.error('Failed to send order confirmation email:', emailError);
     }
