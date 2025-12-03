@@ -313,8 +313,14 @@ export const createFreeOrder = async (req: AuthRequest, res: Response, next: Nex
   try {
     const { items, billingInfo } = req.body;
 
+    console.log('createFreeOrder called with:', { items, billingInfo, userId: req.user?.id });
+
     if (!items || !Array.isArray(items) || items.length === 0) {
       throw new AppError('Cart items are required', 400);
+    }
+
+    if (!billingInfo?.email || !billingInfo?.firstName || !billingInfo?.lastName) {
+      throw new AppError('Billing info (email, firstName, lastName) is required', 400);
     }
 
     // Validate all items are free
@@ -337,7 +343,7 @@ export const createFreeOrder = async (req: AuthRequest, res: Response, next: Nex
     let customerEmail = billingInfo.email;
 
     if (!customerId) {
-      // Guest checkout - find or create user
+      // Guest checkout - find or create user by email
       let user = await prisma.user.findUnique({
         where: { email: customerEmail },
       });
@@ -361,10 +367,12 @@ export const createFreeOrder = async (req: AuthRequest, res: Response, next: Nex
       customerId = user.id;
     }
 
+    console.log('Creating order for customerId:', customerId);
+
     // Create order
     const order = await prisma.order.create({
       data: {
-        customerId,
+        customerId: customerId!,
         status: OrderStatus.COMPLETED,
         subtotal: 0,
         discount: 0,
@@ -374,11 +382,11 @@ export const createFreeOrder = async (req: AuthRequest, res: Response, next: Nex
         paymentStatus: 'PAID',
         billingEmail: customerEmail,
         billingName: `${billingInfo.firstName} ${billingInfo.lastName}`,
-        billingCountry: billingInfo.country,
+        billingCountry: billingInfo.country || 'US',
         orderItems: {
           create: items.map((item: any) => ({
             productId: item.productId,
-            vendorId: item.vendorId,
+            vendorId: item.vendorId || null,
             quantity: item.quantity || 1,
             price: 0,
             license: item.license || 'personal',
@@ -391,6 +399,8 @@ export const createFreeOrder = async (req: AuthRequest, res: Response, next: Nex
         },
       },
     });
+
+    console.log('Order created successfully:', order.id);
 
     // Create download records for digital products
     for (const orderItem of order.orderItems) {
