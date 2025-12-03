@@ -462,7 +462,13 @@ export const createFreeOrder = async (req: AuthRequest, res: Response, next: Nex
     console.error('createFreeOrder error:', error);
     console.error('Error message:', error.message);
     console.error('Error stack:', error.stack);
-    next(error);
+    // Return detailed error for debugging
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create free order',
+      error: process.env.NODE_ENV !== 'production' ? error.stack : undefined,
+      details: error.code || error.name,
+    });
   }
 };
 
