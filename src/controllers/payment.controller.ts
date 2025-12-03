@@ -415,26 +415,24 @@ export const createFreeOrder = async (req: AuthRequest, res: Response, next: Nex
       });
     }
 
-    // Send confirmation email
-    try {
-      await sendOrderConfirmationEmail(
-        customerEmail,
-        billingInfo.firstName,
-        {
-          id: order.id,
-          total: 0,
-          currency: 'USD',
-          items: order.orderItems.map((item: any) => ({
-            title: item.product.title,
-            price: 0,
-            quantity: item.quantity,
-            license: item.license,
-          })),
-        }
-      );
-    } catch (emailError) {
+    // Send confirmation email (fire and forget - don't await)
+    sendOrderConfirmationEmail(
+      customerEmail,
+      billingInfo.firstName,
+      {
+        id: order.id,
+        total: 0,
+        currency: 'USD',
+        items: order.orderItems.map((item: any) => ({
+          title: item.product.title,
+          price: 0,
+          quantity: item.quantity,
+          license: item.license,
+        })),
+      }
+    ).catch((emailError) => {
       console.error('Failed to send order confirmation email:', emailError);
-    }
+    });
 
     res.status(201).json({
       success: true,
