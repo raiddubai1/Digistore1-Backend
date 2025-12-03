@@ -62,5 +62,11 @@ router.patch(
   productController.rejectProduct
 );
 
+// Bulk import endpoint (uses secret key instead of JWT)
+router.post(
+  '/bulk-import',
+  productController.bulkImportProducts
+);
+
 export default router;
 

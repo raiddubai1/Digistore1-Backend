@@ -557,3 +557,70 @@ export const rejectProduct = async (req: AuthRequest, res: Response, next: NextF
   }
 };
 
+// Bulk import products with secret key authentication
+export const bulkImportProducts = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { secret, products } = req.body;
+
+    // Check secret key
+    const IMPORT_SECRET = process.env.IMPORT_SECRET || 'digistore1-bulk-import-2024';
+    if (secret !== IMPORT_SECRET) {
+      throw new AppError('Invalid import secret', 403);
+    }
+
+    if (!Array.isArray(products) || products.length === 0) {
+      throw new AppError('Products array is required', 400);
+    }
+
+    // Get default vendor (admin's vendor profile)
+    const admin = await prisma.user.findFirst({
+      where: { role: 'ADMIN' },
+      include: { vendorProfile: true },
+    });
+
+    if (!admin?.vendorProfile) {
+      throw new AppError('No admin vendor profile found', 500);
+    }
+
+    const vendorId = admin.vendorProfile.id;
+    const results = { success: 0, failed: 0, errors: [] as string[] };
+
+    for (const product of products) {
+      try {
+        await prisma.product.create({
+          data: {
+            title: product.title,
+            slug: product.slug,
+            description: product.description || `Free eBook: ${product.title}`,
+            price: product.price || 0,
+            categoryId: product.categoryId,
+            vendorId,
+            thumbnailUrl: product.thumbnailUrl || 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=400',
+            fileUrl: product.fileUrl,
+            fileType: product.fileType || 'pdf',
+            fileName: product.fileName,
+            fileSize: product.fileSize ? BigInt(product.fileSize) : null,
+            status: ProductStatus.APPROVED,
+            tags: product.tags || [],
+            previewImages: [],
+            whatsIncluded: ['Full eBook PDF'],
+            requirements: [],
+          },
+        });
+        results.success++;
+      } catch (error: any) {
+        results.failed++;
+        results.errors.push(`${product.title}: ${error.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Imported ${results.success} products, ${results.failed} failed`,
+      data: results,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

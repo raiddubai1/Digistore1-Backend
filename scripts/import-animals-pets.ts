@@ -10,11 +10,11 @@ import { PrismaClient, ProductStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// Configure Cloudinary
+// Configure Cloudinary - CORRECT ACCOUNT
 cloudinary.config({
-  cloud_name: 'diyj7ibcz',
-  api_key: '165774748314148',
-  api_secret: 'jV0AimbMSA9YDUO7upTRv2CNs70',
+  cloud_name: 'dnb29pk8j',
+  api_key: '319936465742415',
+  api_secret: 'gXqwvM5yGAVUJufLKS0u5hkcZjU',
 });
 
 // ============ UPDATE THESE FOR EACH IMPORT ============
@@ -106,9 +106,8 @@ async function getOrCreateVendor(): Promise<string> {
       data: {
         userId: admin.id,
         businessName: 'DigiStore Official',
+        businessEmail: admin.email || 'admin@digistore.com',
         description: 'Official DigiStore products',
-        verified: true,
-        autoApproveProducts: true,
       },
     });
   }
