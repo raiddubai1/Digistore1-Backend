@@ -26,8 +26,11 @@ async function callGemini(prompt: string): Promise<string> {
     }),
   });
 
-  const data = await response.json();
-  
+  const data = await response.json() as {
+    error?: { message?: string };
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+
   if (data.error) {
     throw new Error(data.error.message || 'Gemini API error');
   }
