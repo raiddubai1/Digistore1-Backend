@@ -23,6 +23,7 @@ import referralRoutes from './routes/referral.routes';
 import newsletterRoutes from './routes/newsletter.routes';
 import attributeRoutes from './routes/attribute.routes';
 import uploadRoutes from './routes/upload.routes';
+import aiRoutes from './routes/ai.routes';
 
 // Load environment variables
 dotenv.config();
@@ -99,6 +100,7 @@ app.use('/api/referrals', referralRoutes);
 app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/attributes', attributeRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/ai', aiRoutes);
 
 // ============================================
 // ERROR HANDLING
