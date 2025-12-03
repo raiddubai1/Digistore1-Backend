@@ -95,10 +95,13 @@ export const downloadFile = async (req: Request, res: Response, next: NextFuncti
       },
     });
 
-    res.json({
-      success: true,
-      data: { fileUrl: download.product.fileUrl },
-    });
+    // Redirect to the actual file URL for download
+    const fileUrl = download.product.fileUrl;
+    if (fileUrl) {
+      return res.redirect(fileUrl);
+    }
+
+    throw new AppError('File not available', 404);
   } catch (error) {
     next(error);
   }
