@@ -68,5 +68,11 @@ router.post(
   productController.bulkImportProducts
 );
 
+// Bulk update thumbnails endpoint (uses secret key instead of JWT)
+router.post(
+  '/bulk-update-thumbnails',
+  productController.bulkUpdateThumbnails
+);
+
 export default router;
 

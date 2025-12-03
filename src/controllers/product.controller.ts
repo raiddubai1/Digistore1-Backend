@@ -624,3 +624,43 @@ export const bulkImportProducts = async (req: Request, res: Response, next: Next
   }
 };
 
+// Bulk update thumbnails with secret key authentication
+export const bulkUpdateThumbnails = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { secret, updates } = req.body;
+
+    // Check secret key
+    const IMPORT_SECRET = process.env.IMPORT_SECRET || 'digistore1-bulk-import-2024';
+    if (secret !== IMPORT_SECRET) {
+      throw new AppError('Invalid import secret', 403);
+    }
+
+    if (!Array.isArray(updates) || updates.length === 0) {
+      throw new AppError('Updates array is required', 400);
+    }
+
+    const results = { success: 0, failed: 0, errors: [] as string[] };
+
+    for (const update of updates) {
+      try {
+        await prisma.product.update({
+          where: { id: update.id },
+          data: { thumbnailUrl: update.thumbnailUrl },
+        });
+        results.success++;
+      } catch (error: any) {
+        results.failed++;
+        results.errors.push(`${update.id}: ${error.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Updated ${results.success} thumbnails, ${results.failed} failed`,
+      data: results,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

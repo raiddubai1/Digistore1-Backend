@@ -1,5 +1,5 @@
 /**
- * Upload ALL ABOUT DOGS eBooks to Cloudinary and create products via bulk import API
+ * Fix thumbnails for ALL ABOUT DOGS products - extract first page from PDFs
  */
 
 import { v2 as cloudinary } from 'cloudinary';
@@ -16,7 +16,6 @@ cloudinary.config({
 const SOURCE_DIR = '/Volumes/Raid1/Users/raidf/Downloads/ALL ABOUT DOGS';
 const CATEGORY_ID = 'cmilryhjn000zea2yj73v29us'; // All About Dogs
 const API_BASE = 'https://digistore1-backend.onrender.com/api';
-const CLOUDINARY_FOLDER = 'digistore1/ebooks/all-about-dogs';
 const IMPORT_SECRET = 'digistore1-bulk-import-2024';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -32,29 +31,41 @@ function generateSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 100);
 }
 
-async function uploadToCloudinary(filePath: string): Promise<string> {
-  const slug = generateSlug(path.basename(filePath, '.pdf'));
+// Upload PDF as 'image' type to enable page extraction for thumbnails
+async function uploadPdfForThumbnail(filePath: string, slug: string): Promise<string> {
   const result = await cloudinary.uploader.upload(filePath, {
-    folder: CLOUDINARY_FOLDER,
-    resource_type: 'raw',
-    public_id: slug,
+    folder: 'digistore1/thumbnails/dogs',
+    resource_type: 'image', // This allows Cloudinary to extract pages
+    public_id: `thumb-${slug}`,
     overwrite: true,
+    format: 'jpg',
+    transformation: [
+      { page: 1 },           // Get first page
+      { width: 400, height: 550, crop: 'fill' }
+    ]
   });
   return result.secure_url;
 }
 
 async function main() {
   console.log('\n========================================');
-  console.log('UPLOADING DOG EBOOKS (Bulk Import)');
+  console.log('FIXING THUMBNAILS FOR DOG EBOOKS');
   console.log('========================================\n');
 
+  // Get all products in the category
+  console.log('Fetching existing products...');
+  const prodResponse = await fetch(`${API_BASE}/products?categoryId=${CATEGORY_ID}&limit=200`);
+  const prodData = await prodResponse.json();
+  const existingProducts = prodData.data?.products || [];
+  console.log(`Found ${existingProducts.length} products in database\n`);
+
+  // Get local PDF files
   const files = fs.readdirSync(SOURCE_DIR).filter(f => f.toLowerCase().endsWith('.pdf'));
-  console.log(`Found ${files.length} PDF files\n`);
+  console.log(`Found ${files.length} PDF files locally\n`);
 
-  const products: any[] = [];
-  let uploaded = 0, skipped = 0;
+  const updates: { id: string; thumbnailUrl: string }[] = [];
+  let processed = 0, skipped = 0;
 
-  // Step 1: Upload all files to Cloudinary
   for (let i = 0; i < files.length; i++) {
     const filename = files[i];
     const filePath = path.join(SOURCE_DIR, filename);
@@ -64,6 +75,19 @@ async function main() {
 
     console.log(`[${i + 1}/${files.length}] ${title}`);
 
+    // Find matching product in database
+    const product = existingProducts.find((p: any) =>
+      p.slug === slug ||
+      p.title.toLowerCase() === title.toLowerCase() ||
+      p.slug.includes(slug.substring(0, 20))
+    );
+
+    if (!product) {
+      console.log(`  ⏭️ No matching product found`);
+      skipped++;
+      continue;
+    }
+
     if (fileSize > MAX_FILE_SIZE) {
       console.log(`  ⏭️ Skipped (file too large: ${(fileSize / 1024 / 1024).toFixed(1)}MB)`);
       skipped++;
@@ -71,44 +95,36 @@ async function main() {
     }
 
     try {
-      console.log(`  📤 Uploading to Cloudinary...`);
-      const fileUrl = await uploadToCloudinary(filePath);
-      console.log(`  ✅ Uploaded`);
+      console.log(`  📤 Generating thumbnail from PDF...`);
+      const thumbnailUrl = await uploadPdfForThumbnail(filePath, slug);
+      console.log(`  ✅ Thumbnail: ${thumbnailUrl.substring(0, 60)}...`);
 
-      products.push({
-        title,
-        slug,
-        description: `Free eBook: ${title}. A comprehensive guide about dogs covering training, health, and care tips.`,
-        price: 0,
-        categoryId: CATEGORY_ID,
-        fileUrl,
-        fileType: 'pdf',
-        fileName: filename,
-        fileSize,
-        thumbnailUrl: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=400',
-      });
-      uploaded++;
+      updates.push({ id: product.id, thumbnailUrl });
+      processed++;
     } catch (error: any) {
-      console.log(`  ❌ Upload error: ${error.message}`);
+      console.log(`  ❌ Error: ${error.message}`);
       skipped++;
     }
   }
 
-  console.log(`\n📦 Uploaded ${uploaded} files, skipped ${skipped}`);
-  console.log(`\n📝 Creating ${products.length} products via bulk import API...`);
+  console.log(`\n📦 Generated ${processed} thumbnails, skipped ${skipped}`);
 
-  // Step 2: Bulk import all products
-  const response = await fetch(`${API_BASE}/products/bulk-import`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ secret: IMPORT_SECRET, products }),
-  });
+  if (updates.length > 0) {
+    console.log(`\n📝 Updating ${updates.length} products with new thumbnails...`);
 
-  const result = await response.json();
-  console.log('\n========================================');
-  console.log('IMPORT RESULT:');
-  console.log(JSON.stringify(result, null, 2));
-  console.log('========================================\n');
+    // Update via bulk-update endpoint
+    const response = await fetch(`${API_BASE}/products/bulk-update-thumbnails`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: IMPORT_SECRET, updates }),
+    });
+
+    const result = await response.json();
+    console.log('\n========================================');
+    console.log('UPDATE RESULT:');
+    console.log(JSON.stringify(result, null, 2));
+    console.log('========================================\n');
+  }
 }
 
 main().catch(console.error);
