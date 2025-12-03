@@ -453,27 +453,18 @@ export const createFreeOrder = async (req: AuthRequest, res: Response, next: Nex
       console.error('Failed to send order confirmation email:', emailError);
     });
 
-    // Convert Decimal/BigInt to numbers for JSON serialization
-    const serializedOrder = {
-      ...order,
-      subtotal: Number(order.subtotal),
-      discount: Number(order.discount),
-      total: Number(order.total),
-      orderItems: order.orderItems.map((item: any) => ({
-        ...item,
-        price: Number(item.price),
-        product: {
-          ...item.product,
-          price: Number(item.product.price),
-          comparePrice: item.product.comparePrice ? Number(item.product.comparePrice) : null,
-        },
-      })),
-    };
-
+    // Only return what's needed - avoid BigInt serialization issues
     res.status(201).json({
       success: true,
       message: 'Free order completed successfully',
-      data: { order: serializedOrder },
+      data: {
+        order: {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          total: 0,
+        }
+      },
     });
   } catch (error: any) {
     console.error('createFreeOrder error:', error);
