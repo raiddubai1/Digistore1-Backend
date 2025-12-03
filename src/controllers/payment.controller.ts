@@ -405,24 +405,33 @@ export const createFreeOrder = async (req: AuthRequest, res: Response, next: Nex
     // Create download records for digital products
     for (const orderItem of order.orderItems) {
       if (orderItem.product.fileUrl) {
-        await prisma.download.create({
-          data: {
-            orderId: order.id,
-            productId: orderItem.productId,
-            userId: customerId,
-            downloadUrl: orderItem.product.fileUrl,
-            expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year for free products
-          },
-        });
+        try {
+          await prisma.download.create({
+            data: {
+              orderId: order.id,
+              productId: orderItem.productId,
+              userId: customerId!,
+              downloadUrl: orderItem.product.fileUrl,
+              expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year for free products
+            },
+          });
+        } catch (downloadError) {
+          console.error('Failed to create download record:', downloadError);
+          // Continue - order is already created, download failure shouldn't fail the order
+        }
       }
     }
 
     // Update product download counts
     for (const orderItem of order.orderItems) {
-      await prisma.product.update({
-        where: { id: orderItem.productId },
-        data: { downloadCount: { increment: 1 } },
-      });
+      try {
+        await prisma.product.update({
+          where: { id: orderItem.productId },
+          data: { downloadCount: { increment: 1 } },
+        });
+      } catch (countError) {
+        console.error('Failed to update download count:', countError);
+      }
     }
 
     // Send confirmation email (fire and forget - don't await)
@@ -449,7 +458,10 @@ export const createFreeOrder = async (req: AuthRequest, res: Response, next: Nex
       message: 'Free order completed successfully',
       data: { order },
     });
-  } catch (error) {
+  } catch (error: any) {
+    console.error('createFreeOrder error:', error);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
     next(error);
   }
 };
