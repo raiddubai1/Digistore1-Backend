@@ -285,6 +285,43 @@ export const getProductBySlug = async (req: AuthRequest, res: Response, next: Ne
   }
 };
 
+// Get product by ID (for admin edit)
+export const getProductById = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+
+    const product = await prisma.product.findUnique({
+      where: { id },
+      include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
+        vendor: {
+          select: {
+            id: true,
+            businessName: true,
+          },
+        },
+      },
+    });
+
+    if (!product) {
+      throw new AppError('Product not found', 404);
+    }
+
+    res.json({
+      success: true,
+      data: { product: serializeProduct(product) },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Create product (Vendor only)
 export const createProduct = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {

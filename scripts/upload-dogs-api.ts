@@ -55,7 +55,7 @@ async function main() {
   // Get all products in the category
   console.log('Fetching existing products...');
   const prodResponse = await fetch(`${API_BASE}/products?categoryId=${CATEGORY_ID}&limit=200`);
-  const prodData = await prodResponse.json();
+  const prodData = await prodResponse.json() as any;
   const existingProducts = prodData.data?.products || [];
   console.log(`Found ${existingProducts.length} products in database\n`);
 
