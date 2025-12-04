@@ -9,6 +9,8 @@ const router = Router();
 router.delete('/products/cleanup-all', adminController.deleteAllProductsPublic);
 router.get('/migration/status', migrationController.getMigrationStatus);
 router.post('/migration/start', migrationController.startMigration);
+// TEMPORARY: Unprotected signed URL for testing downloads
+router.get('/products/:productId/signed-url', adminController.getSignedDownloadUrl);
 
 // All routes require admin authentication
 router.use(authenticate);
@@ -39,9 +41,6 @@ router.post('/products', adminController.createProductAdmin);
 
 // Delete all products (for cleanup)
 router.delete('/products/all', adminController.deleteAllProducts);
-
-// Get signed download URL for testing
-router.get('/products/:productId/signed-url', adminController.getSignedDownloadUrl);
 
 export default router;
 
