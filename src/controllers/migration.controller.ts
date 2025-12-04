@@ -32,7 +32,11 @@ async function uploadToCloudinary(url: string, folder: string): Promise<string> 
   if (uploadedImages.has(url)) return uploadedImages.get(url)!;
   try {
     const result = await cloudinary.uploader.upload(url, {
-      folder: `digistore1/${folder}`, resource_type: 'auto', timeout: 120000,
+      folder: `digistore1/${folder}`,
+      resource_type: 'auto',
+      timeout: 120000,
+      access_mode: 'public',
+      type: 'upload',
     });
     uploadedImages.set(url, result.secure_url);
     return result.secure_url;

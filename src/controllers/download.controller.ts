@@ -3,6 +3,46 @@ import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth';
 import crypto from 'crypto';
+import { v2 as cloudinary } from 'cloudinary';
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: 'donkzbuyp',
+  api_key: '281985365816781',
+  api_secret: 'mmdvkGNnW6QxzgwYGznYsvYtLws',
+});
+
+// Generate signed URL for Cloudinary raw files
+function getSignedCloudinaryUrl(fileUrl: string): string {
+  if (!fileUrl || !fileUrl.includes('cloudinary.com')) {
+    return fileUrl;
+  }
+
+  try {
+    // Extract public_id from URL
+    // URL format: https://res.cloudinary.com/donkzbuyp/raw/upload/v1234567890/digistore1/downloads/filename.zip
+    const urlParts = fileUrl.split('/upload/');
+    if (urlParts.length < 2) return fileUrl;
+
+    // Get the path after /upload/ (includes version and public_id)
+    const pathAfterUpload = urlParts[1];
+    // Remove version number if present (v1234567890/)
+    const publicIdWithExt = pathAfterUpload.replace(/^v\d+\//, '');
+
+    // Generate signed URL with 1 hour expiry
+    const signedUrl = cloudinary.url(publicIdWithExt, {
+      resource_type: 'raw',
+      type: 'upload',
+      sign_url: true,
+      expires_at: Math.floor(Date.now() / 1000) + 3600, // 1 hour
+    });
+
+    return signedUrl;
+  } catch (error) {
+    console.error('Error generating signed URL:', error);
+    return fileUrl;
+  }
+}
 
 // Get user's downloads
 export const getMyDownloads = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -98,7 +138,9 @@ export const downloadFile = async (req: Request, res: Response, next: NextFuncti
     // Redirect to the actual file URL for download
     const fileUrl = download.product.fileUrl;
     if (fileUrl) {
-      return res.redirect(fileUrl);
+      // Generate signed URL for Cloudinary raw files
+      const signedUrl = getSignedCloudinaryUrl(fileUrl);
+      return res.redirect(signedUrl);
     }
 
     throw new AppError('File not available', 404);
