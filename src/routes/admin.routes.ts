@@ -31,5 +31,8 @@ router.patch('/reviews/:reviewId/toggle-verified', adminController.toggleReviewV
 // Product management (for bulk imports)
 router.post('/products', adminController.createProductAdmin);
 
+// Delete all products (for cleanup)
+router.delete('/products/all', adminController.deleteAllProducts);
+
 export default router;
 

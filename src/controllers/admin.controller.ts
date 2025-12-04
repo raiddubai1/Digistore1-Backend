@@ -518,3 +518,38 @@ export const createProductAdmin = async (req: AuthRequest, res: Response, next: 
     next(error);
   }
 };
+
+// Bulk delete all products (admin only)
+export const deleteAllProducts = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user || req.user.role !== 'ADMIN') {
+      throw new AppError('Not authorized', 403);
+    }
+
+    // Delete all order items first (foreign key constraint)
+    await prisma.orderItem.deleteMany({});
+
+    // Delete all product attributes
+    await prisma.productAttribute.deleteMany({});
+
+    // Delete all downloads
+    await prisma.download.deleteMany({});
+
+    // Delete all reviews
+    await prisma.review.deleteMany({});
+
+    // Delete all wishlists
+    await prisma.wishlist.deleteMany({});
+
+    // Now delete all products
+    const result = await prisma.product.deleteMany({});
+
+    res.json({
+      success: true,
+      message: `Deleted ${result.count} products and all related data`,
+      data: { deletedCount: result.count },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
