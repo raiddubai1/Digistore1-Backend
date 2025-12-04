@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth';
+import { sendOrderStatusUpdateEmail } from '../services/email.service';
 
 // Get user's orders
 export const getMyOrders = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -154,6 +155,78 @@ export const createOrder = async (req: AuthRequest, res: Response, next: NextFun
       success: true,
       message: 'Order created successfully',
       data: { order },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update order status (Admin only)
+export const updateOrderStatus = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user) {
+      throw new AppError('Not authenticated', 401);
+    }
+
+    if (req.user.role !== 'ADMIN') {
+      throw new AppError('Admin access required', 403);
+    }
+
+    const { id } = req.params;
+    const { status, sendEmail = true } = req.body;
+
+    const validStatuses = ['PENDING', 'PROCESSING', 'COMPLETED', 'CANCELLED', 'REFUNDED', 'FAILED'];
+    if (!validStatuses.includes(status)) {
+      throw new AppError(`Invalid status. Must be one of: ${validStatuses.join(', ')}`, 400);
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        customer: {
+          select: { email: true, name: true },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new AppError('Order not found', 404);
+    }
+
+    // Update order status
+    const updatedOrder = await prisma.order.update({
+      where: { id },
+      data: { status },
+      include: {
+        orderItems: {
+          include: { product: true },
+        },
+      },
+    });
+
+    // Send email notification if enabled
+    if (sendEmail && order.customer?.email) {
+      try {
+        await sendOrderStatusUpdateEmail(
+          order.customer.email,
+          order.customer.name || 'Customer',
+          {
+            id: order.orderNumber,
+            status: status.toLowerCase(),
+            total: Number(order.total),
+            currency: 'USD',
+          }
+        );
+      } catch (emailError) {
+        console.error('Failed to send order status email:', emailError);
+        // Don't fail the request if email fails
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Order status updated to ${status}`,
+      data: { order: updatedOrder },
     });
   } catch (error) {
     next(error);

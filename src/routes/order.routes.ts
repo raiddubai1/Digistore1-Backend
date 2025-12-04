@@ -27,5 +27,16 @@ router.post(
   orderController.createOrder
 );
 
+// Update order status (Admin only)
+router.patch(
+  '/:id/status',
+  [
+    body('status').isIn(['PENDING', 'PROCESSING', 'COMPLETED', 'CANCELLED', 'REFUNDED', 'FAILED']),
+    body('sendEmail').optional().isBoolean(),
+  ],
+  validate,
+  orderController.updateOrderStatus
+);
+
 export default router;
 

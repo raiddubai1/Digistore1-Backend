@@ -173,3 +173,78 @@ export const sendOrderConfirmationEmail = async (
   });
 };
 
+// Send order status update email
+export const sendOrderStatusUpdateEmail = async (
+  email: string,
+  name: string,
+  order: {
+    id: string;
+    status: string;
+    total: number;
+    currency: string;
+  }
+) => {
+  const orderUrl = `${process.env.FRONTEND_URL}/account?tab=orders`;
+
+  const statusMessages: Record<string, { title: string; message: string; emoji: string }> = {
+    processing: {
+      title: 'Order Processing',
+      message: 'Your order is being processed. We\'ll notify you when it\'s ready.',
+      emoji: '⏳'
+    },
+    completed: {
+      title: 'Order Completed',
+      message: 'Your order has been completed! Your digital products are ready for download.',
+      emoji: '✅'
+    },
+    cancelled: {
+      title: 'Order Cancelled',
+      message: 'Your order has been cancelled. If you have any questions, please contact support.',
+      emoji: '❌'
+    },
+    refunded: {
+      title: 'Order Refunded',
+      message: 'Your order has been refunded. The amount will be credited back to your payment method within 5-10 business days.',
+      emoji: '💰'
+    },
+    failed: {
+      title: 'Order Failed',
+      message: 'Unfortunately, your order could not be processed. Please try again or contact support.',
+      emoji: '⚠️'
+    }
+  };
+
+  const statusInfo = statusMessages[order.status] || {
+    title: `Order Status: ${order.status}`,
+    message: `Your order status has been updated to: ${order.status}`,
+    emoji: '📦'
+  };
+
+  const content = `
+    <h2>${statusInfo.emoji} ${statusInfo.title}</h2>
+    <p>Hi ${name},</p>
+    <p>${statusInfo.message}</p>
+
+    <div style="background: #f9f9f9; border-radius: 8px; padding: 20px; margin: 20px 0;">
+      <p style="margin: 0 0 10px;"><strong>Order ID:</strong> ${order.id}</p>
+      <p style="margin: 0 0 10px;"><strong>Status:</strong> <span style="text-transform: capitalize;">${order.status}</span></p>
+      <p style="margin: 0;"><strong>Total:</strong> ${order.currency} ${order.total.toFixed(2)}</p>
+    </div>
+
+    <p style="text-align: center; margin: 30px 0;">
+      <a href="${orderUrl}" class="button">View Order Details</a>
+    </p>
+
+    <p style="color: #666; font-size: 14px;">If you have any questions, please contact our support team.</p>
+  `;
+
+  const transporter = createTransporter();
+
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM || 'Digistore1 <noreply@digistore1.com>',
+    to: email,
+    subject: `${statusInfo.title} - Order ${order.id} - Digistore1`,
+    html: getBaseTemplate(content),
+  });
+};
+
