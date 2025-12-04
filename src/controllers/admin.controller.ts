@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth';
+import { getSignedDownloadUrl, getS3KeyFromUrl } from '../config/s3';
 
 // Get dashboard stats
 export const getDashboardStats = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -607,7 +608,7 @@ cloudinary.config({
   api_secret: API_SECRET,
 });
 
-// Stream download file through backend using Cloudinary API
+// Stream download file through backend - supports S3 files
 export const streamDownloadFile = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { productId } = req.params;
@@ -627,28 +628,24 @@ export const streamDownloadFile = async (req: AuthRequest, res: Response, next: 
     const safeFileName = (product.fileName || 'download').replace(/[^a-zA-Z0-9-_]/g, '_');
     const fileName = `${safeFileName}.${ext}`;
 
-    // Extract public_id from Cloudinary URL (keep full path with extension for raw)
-    // URL format: https://res.cloudinary.com/cloud/raw/upload/v123/folder/file.ext
-    const match = product.fileUrl.match(/\/raw\/upload\/(?:v\d+\/)?(.+)$/);
-    if (!match) {
-      throw new AppError('Invalid file URL format', 400);
+    // Check if it's an S3 URL
+    const s3Key = getS3KeyFromUrl(product.fileUrl);
+    let downloadUrl: string;
+
+    if (s3Key) {
+      // Generate S3 signed URL
+      downloadUrl = await getSignedDownloadUrl(s3Key, fileName, 3600);
+      console.log('Downloading from S3 signed URL');
+    } else {
+      // Fallback to original URL (for legacy Cloudinary files)
+      downloadUrl = product.fileUrl;
+      console.log('Downloading from original URL:', downloadUrl);
     }
-    const publicId = match[1];
 
-    // Generate signed URL using Cloudinary SDK
-    const signedUrl = cloudinary.url(publicId, {
-      resource_type: 'raw',
-      type: 'upload',
-      sign_url: true,
-      secure: true,
-    });
-
-    console.log('Downloading from signed URL:', signedUrl);
-
-    // Fetch using signed URL
+    // Fetch the file
     const response = await axios({
       method: 'get',
-      url: signedUrl,
+      url: downloadUrl,
       responseType: 'stream',
       timeout: 120000, // 2 min timeout for large files
     });

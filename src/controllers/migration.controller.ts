@@ -6,6 +6,7 @@ import axios from 'axios';
 import { v2 as cloudinary } from 'cloudinary';
 import { prisma } from '../lib/prisma';
 import { ProductStatus } from '@prisma/client';
+import { uploadFromUrlToS3 } from '../config/s3';
 
 // Configuration
 const WOOCOMMERCE_URL = process.env.WOOCOMMERCE_URL || 'https://digistore1.com';
@@ -20,6 +21,7 @@ cloudinary.config({
 
 const categoryMap = new Map<number, string>();
 const uploadedImages = new Map<string, string>();
+const uploadedFiles = new Map<string, string>();
 
 function stripHtml(html: string): string {
   if (!html) return '';
@@ -27,6 +29,7 @@ function stripHtml(html: string): string {
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
 }
 
+// Upload images to Cloudinary (good for thumbnails/previews)
 async function uploadToCloudinary(url: string, folder: string): Promise<string> {
   if (!url) return '';
   if (uploadedImages.has(url)) return uploadedImages.get(url)!;
@@ -41,6 +44,23 @@ async function uploadToCloudinary(url: string, folder: string): Promise<string> 
     uploadedImages.set(url, result.secure_url);
     return result.secure_url;
   } catch (e) { return url; }
+}
+
+// Upload downloadable files to S3 (better for ZIPs/PDFs)
+async function uploadFileToS3(url: string, fileName: string): Promise<string> {
+  if (!url) return '';
+  if (uploadedFiles.has(url)) return uploadedFiles.get(url)!;
+  try {
+    const timestamp = Date.now();
+    const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const s3Key = `downloads/${timestamp}-${sanitizedName}`;
+    const result = await uploadFromUrlToS3(url, s3Key);
+    uploadedFiles.set(url, result.url);
+    return result.url;
+  } catch (e: any) {
+    console.log(`S3 upload failed for ${fileName}: ${e.message}`);
+    return url;
+  }
 }
 
 export const getMigrationStatus = async (req: Request, res: Response) => {
@@ -117,8 +137,9 @@ async function migrateProducts(vendorId: string) {
 
         let fileUrl = '', fileName = 'product-file';
         if (woo.downloads?.[0]?.file) {
-          fileUrl = await uploadToCloudinary(woo.downloads[0].file, 'downloads');
-          fileName = woo.downloads[0].name || fileName;
+          fileName = woo.downloads[0].name || 'product-file.zip';
+          // Upload downloadable files to S3 instead of Cloudinary
+          fileUrl = await uploadFileToS3(woo.downloads[0].file, fileName);
         }
 
         const price = parseFloat(woo.price) || 0;

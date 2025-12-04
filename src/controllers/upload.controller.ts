@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import cloudinary from '../config/cloudinary';
 import { AppError } from '../middleware/errorHandler';
 import streamifier from 'streamifier';
+import { uploadToS3 } from '../config/s3';
 
 // Upload single image
 export const uploadImage = async (req: Request, res: Response, next: NextFunction) => {
@@ -78,34 +79,26 @@ export const uploadImages = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
-// Upload product file
+// Upload product file to S3
 export const uploadProductFile = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.file) {
       throw new AppError('No file uploaded', 400);
     }
 
-    // Upload to Cloudinary
-    const result = await new Promise((resolve, reject) => {
-      const uploadStream = cloudinary.uploader.upload_stream(
-        {
-          folder: 'digistore1/products',
-          resource_type: 'auto', // Auto-detect file type
-        },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        }
-      );
+    // Generate unique key for S3
+    const timestamp = Date.now();
+    const sanitizedFileName = req.file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const s3Key = `products/${timestamp}-${sanitizedFileName}`;
 
-      streamifier.createReadStream(req.file!.buffer).pipe(uploadStream);
-    });
+    // Upload to S3
+    const result = await uploadToS3(req.file.buffer, s3Key, req.file.mimetype);
 
     res.json({
       success: true,
       data: {
-        url: (result as any).secure_url,
-        publicId: (result as any).public_id,
+        url: result.url,
+        key: result.key,
         fileName: req.file.originalname,
         fileSize: req.file.size,
         fileType: req.file.mimetype,
