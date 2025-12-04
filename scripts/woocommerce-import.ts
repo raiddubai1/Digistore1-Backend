@@ -22,9 +22,13 @@ dotenv.config();
 const prisma = new PrismaClient();
 
 // WooCommerce API configuration
-const WOOCOMMERCE_URL = process.env.WOOCOMMERCE_URL || '';
-const WOOCOMMERCE_KEY = process.env.WOOCOMMERCE_KEY || 'ck_991eb57491fec38ee0a2fe75aa0414cc51548e7e';
-const WOOCOMMERCE_SECRET = process.env.WOOCOMMERCE_SECRET || 'cs_2d3b48499cabee29e5ae5794acfe4503707e3f93';
+const WOOCOMMERCE_URL = process.env.WOOCOMMERCE_URL || 'https://digistore1.com';
+const WOOCOMMERCE_KEY = process.env.WOOCOMMERCE_KEY || 'ck_15e3f0107fda4ef024edce9e688d7d9c84f70547';
+const WOOCOMMERCE_SECRET = process.env.WOOCOMMERCE_SECRET || 'cs_041219985a4000782bdcca1e259e11cb6c53e3c9';
+
+// Track WooCommerce ID -> Digistore1 ID mappings
+const categoryMap = new Map<number, string>();
+const attributeMap = new Map<number, string>();
 
 interface WooProduct {
   id: number;
@@ -74,34 +78,143 @@ async function fetchWooProducts(page = 1, perPage = 100): Promise<WooProduct[]> 
   }
 }
 
-async function getOrCreateCategory(name: string, slug: string): Promise<string> {
-  let category = await prisma.category.findUnique({ where: { slug } });
-  
-  if (!category) {
-    category = await prisma.category.create({
-      data: {
-        name,
-        slug,
-        description: `Products in ${name}`,
-      },
-    });
-    console.log(`  Created category: ${name}`);
-  }
-  
-  return category.id;
+interface WooCategory {
+  id: number;
+  name: string;
+  slug: string;
+  parent: number;
+  description: string;
+  image: { src: string } | null;
+  menu_order: number;
 }
 
-async function getVendorId(email: string): Promise<string> {
-  const user = await prisma.user.findUnique({
-    where: { email },
-    include: { vendorProfile: true },
+async function fetchAllCategories(): Promise<WooCategory[]> {
+  const url = `${WOOCOMMERCE_URL}/wp-json/wc/v3/products/categories`;
+  const allCategories: WooCategory[] = [];
+  let page = 1;
+
+  while (true) {
+    const response = await axios.get(url, {
+      auth: { username: WOOCOMMERCE_KEY, password: WOOCOMMERCE_SECRET },
+      params: { page, per_page: 100 },
+    });
+
+    allCategories.push(...response.data);
+    const totalPages = parseInt(response.headers['x-wp-totalpages'] || '1');
+    if (page >= totalPages) break;
+    page++;
+  }
+  return allCategories;
+}
+
+async function migrateAllCategories(): Promise<void> {
+  console.log('\n📁 Migrating Categories...');
+  const wooCategories = await fetchAllCategories();
+  console.log(`  Found ${wooCategories.length} categories`);
+
+  // Sort: parent=0 first (top-level), then by parent ID
+  wooCategories.sort((a, b) => a.parent - b.parent);
+
+  for (const wc of wooCategories) {
+    const parentId = wc.parent > 0 ? categoryMap.get(wc.parent) : null;
+    const uniqueSlug = wc.slug + '-' + Date.now().toString(36).slice(-4);
+
+    try {
+      const cat = await prisma.category.create({
+        data: {
+          name: wc.name,
+          slug: uniqueSlug,
+          description: stripHtml(wc.description) || null,
+          image: wc.image?.src || null,
+          parentId,
+          active: true,
+          order: wc.menu_order || 0,
+        },
+      });
+      categoryMap.set(wc.id, cat.id);
+      console.log(`  ✓ ${wc.parent > 0 ? '  └─' : ''} ${wc.name}`);
+    } catch (err: any) {
+      console.error(`  ✗ Failed: ${wc.name} - ${err.message}`);
+    }
+  }
+  console.log(`  Total: ${categoryMap.size} categories migrated`);
+}
+
+async function migrateAttributes(): Promise<void> {
+  console.log('\n🏷️  Migrating Attributes...');
+  const url = `${WOOCOMMERCE_URL}/wp-json/wc/v3/products/attributes`;
+
+  const response = await axios.get(url, {
+    auth: { username: WOOCOMMERCE_KEY, password: WOOCOMMERCE_SECRET },
+    params: { per_page: 100 },
   });
 
-  if (!user?.vendorProfile) {
-    throw new Error(`Vendor profile not found for ${email}. Run setup-admin-vendor first.`);
+  const wooAttrs = response.data;
+  console.log(`  Found ${wooAttrs.length} attributes`);
+
+  for (const wa of wooAttrs) {
+    try {
+      // Fetch terms for this attribute
+      const termsUrl = `${WOOCOMMERCE_URL}/wp-json/wc/v3/products/attributes/${wa.id}/terms`;
+      const termsRes = await axios.get(termsUrl, {
+        auth: { username: WOOCOMMERCE_KEY, password: WOOCOMMERCE_SECRET },
+        params: { per_page: 100 },
+      });
+      const options = termsRes.data.map((t: any) => t.name);
+
+      const attr = await prisma.attribute.create({
+        data: {
+          name: wa.name,
+          slug: wa.slug + '-' + Date.now().toString(36).slice(-4),
+          type: options.length > 0 ? 'SELECT' : 'TEXT',
+          options,
+          active: true,
+        },
+      });
+      attributeMap.set(wa.id, attr.id);
+      console.log(`  ✓ ${wa.name} (${options.length} options)`);
+    } catch (err: any) {
+      console.error(`  ✗ Failed: ${wa.name} - ${err.message}`);
+    }
+  }
+  console.log(`  Total: ${attributeMap.size} attributes migrated`);
+}
+
+async function getOrCreateVendor(): Promise<string> {
+  // Find or create admin user with vendor profile
+  let admin = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
+
+  if (!admin) {
+    const bcrypt = await import('bcryptjs');
+    admin = await prisma.user.create({
+      data: {
+        email: 'admin@digistore1.com',
+        password: await bcrypt.hash('Admin123!', 10),
+        name: 'Digistore1 Admin',
+        role: 'ADMIN',
+        status: 'ACTIVE',
+        emailVerified: true,
+      },
+    });
+    console.log('  Created admin user: admin@digistore1.com');
   }
 
-  return user.vendorProfile.id;
+  let vendor = await prisma.vendorProfile.findUnique({ where: { userId: admin.id } });
+
+  if (!vendor) {
+    vendor = await prisma.vendorProfile.create({
+      data: {
+        userId: admin.id,
+        businessName: 'Digistore1 Official',
+        slug: 'digistore1-official-' + Date.now().toString(36).slice(-4),
+        description: 'Official Digistore1 Products',
+        status: 'ACTIVE',
+      },
+    });
+    console.log('  Created vendor profile');
+  }
+
+  return vendor.id;
 }
 
 function stripHtml(html: string): string {
@@ -116,49 +229,45 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-async function importProducts() {
-  console.log('Starting WooCommerce import...\n');
-  
-  // Get vendor ID
-  const vendorId = await getVendorId('admin@digistore1.com');
-  console.log(`Using vendor ID: ${vendorId}\n`);
+async function importProducts(vendorId: string) {
+  console.log('\n📦 Migrating Products...');
 
   let page = 1;
   let totalImported = 0;
   let totalFailed = 0;
   const errors: string[] = [];
 
-  while (true) {
-    console.log(`Fetching page ${page}...`);
-    const products = await fetchWooProducts(page);
-    
-    if (products.length === 0) {
-      console.log('No more products to fetch.');
-      break;
-    }
+  // Get a fallback category if needed
+  let fallbackCategoryId = categoryMap.values().next().value;
+  if (!fallbackCategoryId) {
+    const cat = await prisma.category.create({
+      data: { name: 'Uncategorized', slug: 'uncategorized-' + Date.now().toString(36).slice(-4), active: true },
+    });
+    fallbackCategoryId = cat.id;
+  }
 
-    console.log(`Found ${products.length} products on page ${page}`);
+  while (true) {
+    console.log(`\n  Fetching page ${page}...`);
+    const products = await fetchWooProducts(page);
+
+    if (products.length === 0) break;
+
+    console.log(`  Found ${products.length} products`);
 
     for (const wooProduct of products) {
       try {
         // Generate unique slug
-        let slug = wooProduct.slug || wooProduct.name
+        const baseSlug = wooProduct.slug || wooProduct.name
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/(^-|-$)/g, '');
+        const slug = baseSlug + '-' + Date.now().toString(36).slice(-4);
 
-        // Check if product already exists
-        const existing = await prisma.product.findUnique({ where: { slug } });
-        if (existing) {
-          console.log(`  Skipping "${wooProduct.name}" - already exists`);
-          continue;
-        }
-
-        // Get or create category
-        const category = wooProduct.categories[0];
-        const categoryId = category 
-          ? await getOrCreateCategory(category.name, category.slug)
-          : await getOrCreateCategory('Uncategorized', 'uncategorized');
+        // Get category from map (using first WooCommerce category)
+        const wcCatId = wooProduct.categories[0]?.id;
+        const categoryId = wcCatId && categoryMap.has(wcCatId)
+          ? categoryMap.get(wcCatId)!
+          : fallbackCategoryId;
 
         // Prepare product data
         const price = parseFloat(wooProduct.price) || 0;
@@ -184,16 +293,18 @@ async function importProducts() {
             featured: wooProduct.featured,
             bestseller: wooProduct.total_sales > 10,
             newArrival: true,
-            status: ProductStatus.APPROVED,
+            status: ProductStatus.ACTIVE,
             vendorId,
             rating: parseFloat(wooProduct.average_rating) || 0,
             reviewCount: wooProduct.rating_count || 0,
             downloadCount: wooProduct.total_sales || 0,
             publishedAt: new Date(wooProduct.date_created),
+            metaTitle: wooProduct.name,
+            metaDescription: stripHtml(wooProduct.short_description).slice(0, 160) || null,
           },
         });
 
-        console.log(`  ✓ Imported: ${wooProduct.name}`);
+        console.log(`  ✓ ${wooProduct.name}`);
         totalImported++;
       } catch (error: any) {
         console.error(`  ✗ Failed: ${wooProduct.name} - ${error.message}`);
@@ -216,8 +327,52 @@ async function importProducts() {
   }
 }
 
-// Run the import
-importProducts()
-  .catch(console.error)
-  .finally(() => prisma.$disconnect());
+// Main migration function
+async function main() {
+  console.log('🚀 WooCommerce to Digistore1 Migration');
+  console.log('=' .repeat(50));
+
+  try {
+    // Verify empty database
+    const productCount = await prisma.product.count();
+    const categoryCount = await prisma.category.count();
+    console.log(`\n📊 Current DB: ${productCount} products, ${categoryCount} categories`);
+
+    if (productCount > 0 || categoryCount > 0) {
+      console.log('\n⚠️  WARNING: Database not empty!');
+      console.log('   Continuing will add new records alongside existing ones.');
+      console.log('   To start fresh, run: npx prisma migrate reset');
+    }
+
+    // Get or create vendor
+    console.log('\n👤 Setting up vendor...');
+    const vendorId = await getOrCreateVendor();
+    console.log(`   Vendor ID: ${vendorId}`);
+
+    // Run migrations in order
+    await migrateAllCategories();
+    await migrateAttributes();
+    await importProducts(vendorId);
+
+    // Final summary
+    const finalProducts = await prisma.product.count();
+    const finalCategories = await prisma.category.count();
+    const finalAttributes = await prisma.attribute.count();
+
+    console.log('\n' + '='.repeat(50));
+    console.log('✅ Migration Complete!');
+    console.log(`   Categories: ${finalCategories}`);
+    console.log(`   Attributes: ${finalAttributes}`);
+    console.log(`   Products: ${finalProducts}`);
+    console.log('\n🎉 All products are editable in admin dashboard!');
+
+  } catch (error) {
+    console.error('\n❌ Migration failed:', error);
+    process.exit(1);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+main();
 
