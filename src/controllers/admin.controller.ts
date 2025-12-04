@@ -553,3 +553,41 @@ export const deleteAllProducts = async (req: AuthRequest, res: Response, next: N
     next(error);
   }
 };
+
+// TEMPORARY: Public endpoint for cleanup - REMOVE AFTER USE
+import { Request } from 'express';
+export const deleteAllProductsPublic = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Security: require a secret key
+    const secret = req.headers['x-cleanup-secret'] || req.query.secret;
+    if (secret !== 'cleanup-digistore1-2024') {
+      throw new AppError('Invalid cleanup secret', 403);
+    }
+
+    // Delete all order items first (foreign key constraint)
+    await prisma.orderItem.deleteMany({});
+
+    // Delete all product attributes
+    await prisma.productAttribute.deleteMany({});
+
+    // Delete all downloads
+    await prisma.download.deleteMany({});
+
+    // Delete all reviews
+    await prisma.review.deleteMany({});
+
+    // Delete all wishlists
+    await prisma.wishlist.deleteMany({});
+
+    // Now delete all products
+    const result = await prisma.product.deleteMany({});
+
+    res.json({
+      success: true,
+      message: `Deleted ${result.count} products and all related data`,
+      data: { deletedCount: result.count },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

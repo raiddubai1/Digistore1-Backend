@@ -4,6 +4,9 @@ import { authenticate, authorize } from '../middleware/auth';
 
 const router = Router();
 
+// TEMPORARY: Unprotected delete route for cleanup - REMOVE AFTER USE
+router.delete('/products/cleanup-all', adminController.deleteAllProductsPublic);
+
 // All routes require admin authentication
 router.use(authenticate);
 router.use(authorize('ADMIN'));
