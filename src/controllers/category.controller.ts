@@ -156,23 +156,54 @@ export const updateCategory = async (req: Request, res: Response, next: NextFunc
 export const deleteCategory = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+    const { force } = req.query; // Add force=true to delete with products
 
     // Check if category has products
     const productCount = await prisma.product.count({
       where: { categoryId: id },
     });
 
-    if (productCount > 0) {
-      throw new AppError('Cannot delete category with existing products', 400);
+    if (productCount > 0 && force !== 'true') {
+      throw new AppError(
+        `Cannot delete category with ${productCount} existing product(s). Use force=true to delete all products in this category first.`,
+        400
+      );
     }
 
-    await prisma.category.delete({
-      where: { id },
+    // Delete in transaction
+    await prisma.$transaction(async (tx) => {
+      if (force === 'true' && productCount > 0) {
+        // First, delete all related data for products in this category
+        const productIds = await tx.product.findMany({
+          where: { categoryId: id },
+          select: { id: true },
+        });
+
+        const ids = productIds.map(p => p.id);
+
+        // Delete product-related records
+        await tx.productAttribute.deleteMany({ where: { productId: { in: ids } } });
+        await tx.review.deleteMany({ where: { productId: { in: ids } } });
+        await tx.wishlist.deleteMany({ where: { productId: { in: ids } } });
+        await tx.download.deleteMany({ where: { productId: { in: ids } } });
+        await tx.orderItem.deleteMany({ where: { productId: { in: ids } } });
+
+        // Delete products in this category
+        await tx.product.deleteMany({ where: { categoryId: id } });
+      }
+
+      // Delete child categories first
+      await tx.category.deleteMany({ where: { parentId: id } });
+
+      // Delete the category
+      await tx.category.delete({ where: { id } });
     });
 
     res.json({
       success: true,
-      message: 'Category deleted successfully',
+      message: force === 'true' && productCount > 0
+        ? `Category and ${productCount} product(s) deleted successfully`
+        : 'Category deleted successfully',
     });
   } catch (error) {
     next(error);

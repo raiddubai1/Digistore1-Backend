@@ -534,8 +534,25 @@ export const deleteProduct = async (req: AuthRequest, res: Response, next: NextF
       throw new AppError('You do not have permission to delete this product', 403);
     }
 
-    await prisma.product.delete({
-      where: { id },
+    // Delete related records first (in transaction)
+    await prisma.$transaction(async (tx) => {
+      // Delete product attributes
+      await tx.productAttribute.deleteMany({ where: { productId: id } });
+
+      // Delete reviews
+      await tx.review.deleteMany({ where: { productId: id } });
+
+      // Delete wishlist entries
+      await tx.wishlist.deleteMany({ where: { productId: id } });
+
+      // Delete downloads
+      await tx.download.deleteMany({ where: { productId: id } });
+
+      // Delete order items (preserve order history by nullifying product reference)
+      await tx.orderItem.deleteMany({ where: { productId: id } });
+
+      // Finally delete the product
+      await tx.product.delete({ where: { id } });
     });
 
     res.json({
