@@ -4,7 +4,7 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
 import { v2 as cloudinary } from 'cloudinary';
-import prisma from '../config/database';
+import { prisma } from '../lib/prisma';
 import { ProductStatus } from '@prisma/client';
 
 // Configuration
