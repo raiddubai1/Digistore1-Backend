@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import * as adminController from '../controllers/admin.controller';
+import * as migrationController from '../controllers/migration.controller';
 import { authenticate, authorize } from '../middleware/auth';
 
 const router = Router();
 
-// TEMPORARY: Unprotected delete route for cleanup - REMOVE AFTER USE
+// TEMPORARY: Unprotected routes for migration - REMOVE AFTER USE
 router.delete('/products/cleanup-all', adminController.deleteAllProductsPublic);
+router.get('/migration/status', migrationController.getMigrationStatus);
+router.post('/migration/start', migrationController.startMigration);
 
 // All routes require admin authentication
 router.use(authenticate);

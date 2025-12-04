@@ -15,6 +15,7 @@
 
 import axios from 'axios';
 import { PrismaClient, ProductStatus } from '@prisma/client';
+import { v2 as cloudinary } from 'cloudinary';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -26,9 +27,17 @@ const WOOCOMMERCE_URL = process.env.WOOCOMMERCE_URL || 'https://digistore1.com';
 const WOOCOMMERCE_KEY = process.env.WOOCOMMERCE_KEY || 'ck_15e3f0107fda4ef024edce9e688d7d9c84f70547';
 const WOOCOMMERCE_SECRET = process.env.WOOCOMMERCE_SECRET || 'cs_041219985a4000782bdcca1e259e11cb6c53e3c9';
 
+// Cloudinary configuration
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'donkzbuyp',
+  api_key: process.env.CLOUDINARY_API_KEY || '281985365816781',
+  api_secret: process.env.CLOUDINARY_API_SECRET || 'mmdvkGNnW6QxzgwYGznYsvYtLws',
+});
+
 // Track WooCommerce ID -> Digistore1 ID mappings
 const categoryMap = new Map<number, string>();
 const attributeMap = new Map<number, string>();
+const uploadedImages = new Map<string, string>(); // original URL -> cloudinary URL
 
 interface WooProduct {
   id: number;
@@ -88,6 +97,43 @@ interface WooCategory {
   menu_order: number;
 }
 
+// Helper: Strip HTML tags
+function stripHtml(html: string): string {
+  if (!html) return '';
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
+// Upload image to Cloudinary (with caching to avoid re-uploads)
+async function uploadToCloudinary(url: string, folder: string): Promise<string> {
+  if (!url) return '';
+
+  // Check cache
+  if (uploadedImages.has(url)) {
+    return uploadedImages.get(url)!;
+  }
+
+  try {
+    const result = await cloudinary.uploader.upload(url, {
+      folder: `digistore1/${folder}`,
+      resource_type: 'auto',
+      timeout: 120000, // 2 minutes timeout
+    });
+    uploadedImages.set(url, result.secure_url);
+    return result.secure_url;
+  } catch (error: any) {
+    console.error(`    ⚠️ Failed to upload: ${url.slice(0, 50)}... - ${error.message}`);
+    return url; // Return original URL as fallback
+  }
+}
+
 async function fetchAllCategories(): Promise<WooCategory[]> {
   const url = `${WOOCOMMERCE_URL}/wp-json/wc/v3/products/categories`;
   const allCategories: WooCategory[] = [];
@@ -120,12 +166,18 @@ async function migrateAllCategories(): Promise<void> {
     const uniqueSlug = wc.slug + '-' + Date.now().toString(36).slice(-4);
 
     try {
+      // Upload category image to Cloudinary
+      let imageUrl = null;
+      if (wc.image?.src) {
+        imageUrl = await uploadToCloudinary(wc.image.src, 'categories');
+      }
+
       const cat = await prisma.category.create({
         data: {
           name: wc.name,
           slug: uniqueSlug,
           description: stripHtml(wc.description) || null,
-          image: wc.image?.src || null,
+          image: imageUrl,
           parentId,
           active: true,
           order: wc.menu_order || 0,
@@ -206,9 +258,9 @@ async function getOrCreateVendor(): Promise<string> {
       data: {
         userId: admin.id,
         businessName: 'Digistore1 Official',
-        slug: 'digistore1-official-' + Date.now().toString(36).slice(-4),
+        businessEmail: admin.email,
         description: 'Official Digistore1 Products',
-        status: 'ACTIVE',
+        verified: true,
       },
     });
     console.log('  Created vendor profile');
@@ -217,16 +269,31 @@ async function getOrCreateVendor(): Promise<string> {
   return vendor.id;
 }
 
-function stripHtml(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .trim();
+// Upload all product images to Cloudinary
+async function uploadProductImages(images: Array<{ src: string }>): Promise<{ thumbnail: string; previews: string[] }> {
+  if (!images || images.length === 0) {
+    return { thumbnail: '', previews: [] };
+  }
+
+  const thumbnail = await uploadToCloudinary(images[0].src, 'products');
+  const previews: string[] = [];
+
+  for (const img of images) {
+    const uploaded = await uploadToCloudinary(img.src, 'products');
+    previews.push(uploaded);
+  }
+
+  return { thumbnail, previews };
+}
+
+// Upload downloadable file to Cloudinary
+async function uploadDownloadFile(file: { name: string; file: string } | undefined): Promise<{ url: string; name: string }> {
+  if (!file || !file.file) {
+    return { url: '', name: '' };
+  }
+
+  const uploadedUrl = await uploadToCloudinary(file.file, 'downloads');
+  return { url: uploadedUrl, name: file.name || 'product-file' };
 }
 
 async function importProducts(vendorId: string) {
@@ -256,6 +323,8 @@ async function importProducts(vendorId: string) {
 
     for (const wooProduct of products) {
       try {
+        console.log(`\n  📦 Processing: ${wooProduct.name}`);
+
         // Generate unique slug
         const baseSlug = wooProduct.slug || wooProduct.name
           .toLowerCase()
@@ -268,6 +337,16 @@ async function importProducts(vendorId: string) {
         const categoryId = wcCatId && categoryMap.has(wcCatId)
           ? categoryMap.get(wcCatId)!
           : fallbackCategoryId;
+
+        // Upload images to Cloudinary
+        console.log(`    🖼️  Uploading ${wooProduct.images.length} images...`);
+        const { thumbnail, previews } = await uploadProductImages(wooProduct.images);
+
+        // Upload downloadable file to Cloudinary
+        const downloadFile = await uploadDownloadFile(wooProduct.downloads[0]);
+        if (downloadFile.url) {
+          console.log(`    📁 Uploaded download file`);
+        }
 
         // Prepare product data
         const price = parseFloat(wooProduct.price) || 0;
@@ -286,25 +365,23 @@ async function importProducts(vendorId: string) {
             categoryId,
             tags: wooProduct.tags.map(t => t.name),
             fileType: wooProduct.downloadable ? 'pdf' : 'digital',
-            fileUrl: wooProduct.downloads[0]?.file || '',
-            fileName: wooProduct.downloads[0]?.name || 'product-file',
-            thumbnailUrl: wooProduct.images[0]?.src || '',
-            previewImages: wooProduct.images.map(img => img.src),
+            fileUrl: downloadFile.url,
+            fileName: downloadFile.name || 'product-file',
+            thumbnailUrl: thumbnail,
+            previewImages: previews,
             featured: wooProduct.featured,
             bestseller: wooProduct.total_sales > 10,
             newArrival: true,
-            status: ProductStatus.ACTIVE,
+            status: ProductStatus.APPROVED,
             vendorId,
             rating: parseFloat(wooProduct.average_rating) || 0,
             reviewCount: wooProduct.rating_count || 0,
             downloadCount: wooProduct.total_sales || 0,
             publishedAt: new Date(wooProduct.date_created),
-            metaTitle: wooProduct.name,
-            metaDescription: stripHtml(wooProduct.short_description).slice(0, 160) || null,
           },
         });
 
-        console.log(`  ✓ ${wooProduct.name}`);
+        console.log(`    ✅ Saved to database`);
         totalImported++;
       } catch (error: any) {
         console.error(`  ✗ Failed: ${wooProduct.name} - ${error.message}`);
