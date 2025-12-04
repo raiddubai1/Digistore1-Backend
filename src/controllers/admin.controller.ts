@@ -594,17 +594,20 @@ export const deleteAllProductsPublic = async (req: Request, res: Response, next:
 
 // Get signed download URL for a product (for admin testing)
 import { v2 as cloudinary } from 'cloudinary';
-import https from 'https';
-import http from 'http';
+import axios from 'axios';
 
 // Configure Cloudinary
+const CLOUD_NAME = 'donkzbuyp';
+const API_KEY = '281985365816781';
+const API_SECRET = 'mmdvkGNnW6QxzgwYGznYsvYtLws';
+
 cloudinary.config({
-  cloud_name: 'donkzbuyp',
-  api_key: '281985365816781',
-  api_secret: 'mmdvkGNnW6QxzgwYGznYsvYtLws',
+  cloud_name: CLOUD_NAME,
+  api_key: API_KEY,
+  api_secret: API_SECRET,
 });
 
-// Stream download file through backend (bypasses Cloudinary browser restrictions)
+// Stream download file through backend using Cloudinary API
 export const streamDownloadFile = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { productId } = req.params;
@@ -621,29 +624,46 @@ export const streamDownloadFile = async (req: AuthRequest, res: Response, next: 
     // Get file extension from URL
     const urlPath = new URL(product.fileUrl).pathname;
     const ext = urlPath.split('.').pop() || product.fileType || 'zip';
-    const fileName = product.fileName ? `${product.fileName}.${ext}` : `download.${ext}`;
+    const safeFileName = (product.fileName || 'download').replace(/[^a-zA-Z0-9-_]/g, '_');
+    const fileName = `${safeFileName}.${ext}`;
+
+    // Extract public_id from Cloudinary URL (keep full path with extension for raw)
+    // URL format: https://res.cloudinary.com/cloud/raw/upload/v123/folder/file.ext
+    const match = product.fileUrl.match(/\/raw\/upload\/(?:v\d+\/)?(.+)$/);
+    if (!match) {
+      throw new AppError('Invalid file URL format', 400);
+    }
+    const publicId = match[1];
+
+    // Generate signed URL using Cloudinary SDK
+    const signedUrl = cloudinary.url(publicId, {
+      resource_type: 'raw',
+      type: 'upload',
+      sign_url: true,
+      secure: true,
+    });
+
+    console.log('Downloading from signed URL:', signedUrl);
+
+    // Fetch using signed URL
+    const response = await axios({
+      method: 'get',
+      url: signedUrl,
+      responseType: 'stream',
+      timeout: 120000, // 2 min timeout for large files
+    });
 
     // Set headers for download
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Type', response.headers['content-type'] || 'application/octet-stream');
+    if (response.headers['content-length']) {
+      res.setHeader('Content-Length', response.headers['content-length']);
+    }
 
-    // Fetch from Cloudinary and stream to response
-    const protocol = product.fileUrl.startsWith('https') ? https : http;
-
-    protocol.get(product.fileUrl, (fileResponse) => {
-      if (fileResponse.statusCode === 200) {
-        fileResponse.pipe(res);
-      } else {
-        res.status(fileResponse.statusCode || 500).json({
-          success: false,
-          message: `Failed to fetch file: ${fileResponse.statusCode}`,
-        });
-      }
-    }).on('error', (err) => {
-      console.error('Error streaming file:', err);
-      res.status(500).json({ success: false, message: 'Failed to download file' });
-    });
-  } catch (error) {
-    next(error);
+    // Pipe the response
+    response.data.pipe(res);
+  } catch (error: any) {
+    console.error('Download error:', error.response?.status, error.response?.data, error.message);
+    next(new AppError('Failed to download file', 500));
   }
 };
