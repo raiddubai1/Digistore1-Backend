@@ -449,6 +449,60 @@ router.delete('/clear-products', async (req, res) => {
   }
 });
 
+// Clear all orders endpoint - useful for starting fresh in production
+router.delete('/clear-orders', async (req, res) => {
+  try {
+    // Delete downloads first (references orders)
+    await prisma.download.deleteMany({});
+
+    // Delete order items (references orders)
+    await prisma.orderItem.deleteMany({});
+
+    // Now delete all orders
+    const result = await prisma.order.deleteMany({});
+
+    res.json({
+      success: true,
+      message: `Deleted ${result.count} orders and all related data (downloads, order items)`,
+      data: { deletedCount: result.count },
+    });
+  } catch (error: any) {
+    console.error('Clear orders error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to clear orders',
+    });
+  }
+});
+
+// Clear all categories endpoint
+router.delete('/clear-categories', async (req, res) => {
+  try {
+    // First delete all products (and their related data)
+    await prisma.orderItem.deleteMany({});
+    await prisma.productAttribute.deleteMany({});
+    await prisma.download.deleteMany({});
+    await prisma.review.deleteMany({});
+    await prisma.wishlist.deleteMany({});
+    await prisma.product.deleteMany({});
+
+    // Now delete all categories
+    const result = await prisma.category.deleteMany({});
+
+    res.json({
+      success: true,
+      message: `Deleted ${result.count} categories and all products`,
+      data: { deletedCount: result.count },
+    });
+  } catch (error: any) {
+    console.error('Clear categories error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to clear categories',
+    });
+  }
+});
+
 // Setup vendor profile for admin user - allows admin to create products
 router.post('/setup-admin-vendor', async (req, res) => {
   try {
