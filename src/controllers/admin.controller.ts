@@ -591,3 +591,59 @@ export const deleteAllProductsPublic = async (req: Request, res: Response, next:
     next(error);
   }
 };
+
+// Get signed download URL for a product (for admin testing)
+import { v2 as cloudinary } from 'cloudinary';
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: 'donkzbuyp',
+  api_key: '281985365816781',
+  api_secret: 'mmdvkGNnW6QxzgwYGznYsvYtLws',
+});
+
+export const getSignedDownloadUrl = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { productId } = req.params;
+
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { fileUrl: true, fileName: true },
+    });
+
+    if (!product || !product.fileUrl) {
+      throw new AppError('Product or file not found', 404);
+    }
+
+    const fileUrl = product.fileUrl;
+
+    // If not a Cloudinary URL, return as-is
+    if (!fileUrl.includes('cloudinary.com')) {
+      return res.json({ success: true, data: { signedUrl: fileUrl } });
+    }
+
+    // Extract public_id from URL
+    const urlParts = fileUrl.split('/upload/');
+    if (urlParts.length < 2) {
+      return res.json({ success: true, data: { signedUrl: fileUrl } });
+    }
+
+    const pathAfterUpload = urlParts[1];
+    const publicIdWithExt = pathAfterUpload.replace(/^v\d+\//, '');
+
+    // Generate signed URL with 1 hour expiry
+    const signedUrl = cloudinary.url(publicIdWithExt, {
+      resource_type: 'raw',
+      type: 'upload',
+      sign_url: true,
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    res.json({
+      success: true,
+      data: { signedUrl, fileName: product.fileName },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
