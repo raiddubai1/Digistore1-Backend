@@ -9,8 +9,8 @@ const router = Router();
 router.delete('/products/cleanup-all', adminController.deleteAllProductsPublic);
 router.get('/migration/status', migrationController.getMigrationStatus);
 router.post('/migration/start', migrationController.startMigration);
-// TEMPORARY: Unprotected signed URL for testing downloads
-router.get('/products/:productId/signed-url', adminController.getSignedDownloadUrl);
+// TEMPORARY: Stream download file (bypasses Cloudinary restrictions)
+router.get('/products/:productId/download', adminController.streamDownloadFile);
 
 // All routes require admin authentication
 router.use(authenticate);

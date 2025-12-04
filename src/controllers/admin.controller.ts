@@ -594,6 +594,8 @@ export const deleteAllProductsPublic = async (req: Request, res: Response, next:
 
 // Get signed download URL for a product (for admin testing)
 import { v2 as cloudinary } from 'cloudinary';
+import https from 'https';
+import http from 'http';
 
 // Configure Cloudinary
 cloudinary.config({
@@ -602,46 +604,44 @@ cloudinary.config({
   api_secret: 'mmdvkGNnW6QxzgwYGznYsvYtLws',
 });
 
-export const getSignedDownloadUrl = async (req: AuthRequest, res: Response, next: NextFunction) => {
+// Stream download file through backend (bypasses Cloudinary browser restrictions)
+export const streamDownloadFile = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { productId } = req.params;
 
     const product = await prisma.product.findUnique({
       where: { id: productId },
-      select: { fileUrl: true, fileName: true },
+      select: { fileUrl: true, fileName: true, fileType: true },
     });
 
     if (!product || !product.fileUrl) {
       throw new AppError('Product or file not found', 404);
     }
 
-    const fileUrl = product.fileUrl;
+    // Get file extension from URL
+    const urlPath = new URL(product.fileUrl).pathname;
+    const ext = urlPath.split('.').pop() || product.fileType || 'zip';
+    const fileName = product.fileName ? `${product.fileName}.${ext}` : `download.${ext}`;
 
-    // If not a Cloudinary URL, return as-is
-    if (!fileUrl.includes('cloudinary.com')) {
-      return res.json({ success: true, data: { signedUrl: fileUrl } });
-    }
+    // Set headers for download
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
 
-    // Extract public_id from URL
-    const urlParts = fileUrl.split('/upload/');
-    if (urlParts.length < 2) {
-      return res.json({ success: true, data: { signedUrl: fileUrl } });
-    }
+    // Fetch from Cloudinary and stream to response
+    const protocol = product.fileUrl.startsWith('https') ? https : http;
 
-    const pathAfterUpload = urlParts[1];
-    const publicIdWithExt = pathAfterUpload.replace(/^v\d+\//, '');
-
-    // Generate signed URL with 1 hour expiry
-    const signedUrl = cloudinary.url(publicIdWithExt, {
-      resource_type: 'raw',
-      type: 'upload',
-      sign_url: true,
-      expires_at: Math.floor(Date.now() / 1000) + 3600,
-    });
-
-    res.json({
-      success: true,
-      data: { signedUrl, fileName: product.fileName },
+    protocol.get(product.fileUrl, (fileResponse) => {
+      if (fileResponse.statusCode === 200) {
+        fileResponse.pipe(res);
+      } else {
+        res.status(fileResponse.statusCode || 500).json({
+          success: false,
+          message: `Failed to fetch file: ${fileResponse.statusCode}`,
+        });
+      }
+    }).on('error', (err) => {
+      console.error('Error streaming file:', err);
+      res.status(500).json({ success: false, message: 'Failed to download file' });
     });
   } catch (error) {
     next(error);
