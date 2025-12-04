@@ -425,11 +425,19 @@ router.post('/reset-admin-password', async (req, res) => {
 // Clear all products endpoint - useful for re-seeding
 router.delete('/clear-products', async (req, res) => {
   try {
+    // Delete all related data first (foreign key constraints)
+    await prisma.orderItem.deleteMany({});
+    await prisma.productAttribute.deleteMany({});
+    await prisma.download.deleteMany({});
+    await prisma.review.deleteMany({});
+    await prisma.wishlist.deleteMany({});
+
+    // Now delete all products
     const result = await prisma.product.deleteMany({});
 
     res.json({
       success: true,
-      message: `Deleted ${result.count} products`,
+      message: `Deleted ${result.count} products and all related data`,
       data: { deletedCount: result.count },
     });
   } catch (error: any) {
