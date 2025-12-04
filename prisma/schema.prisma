@@ -177,12 +177,17 @@ model Product {
   slug              String        @unique
   description       String        @db.Text
   shortDescription  String?
-  
+
+  // SEO Fields
+  metaTitle         String?
+  metaDescription   String?
+  focusKeyword      String?
+
   // Pricing
   price             Decimal       @db.Decimal(10, 2)
   originalPrice     Decimal?      @db.Decimal(10, 2)
   discount          Int?          @default(0)
-  
+
   // Category & Tags
   categoryId        String
   category          Category      @relation(fields: [categoryId], references: [id])
