@@ -583,9 +583,15 @@ export const deleteAllProductsPublic = async (req: Request, res: Response, next:
     // Now delete all products
     const result = await prisma.product.deleteMany({});
 
+    // Delete all categories
+    await prisma.category.deleteMany({});
+
+    // Delete all attributes
+    await prisma.attribute.deleteMany({});
+
     res.json({
       success: true,
-      message: `Deleted ${result.count} products and all related data`,
+      message: `Deleted ${result.count} products, all categories, and all related data`,
       data: { deletedCount: result.count },
     });
   } catch (error) {
