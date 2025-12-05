@@ -853,3 +853,40 @@ export const updateProductThumbnail = async (req: Request, res: Response, next: 
     next(error);
   }
 };
+
+// Upload image to Cloudinary (public endpoint for migration)
+import streamifier from 'streamifier';
+
+export const uploadImagePublic = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.file) {
+      throw new AppError('No file uploaded', 400);
+    }
+
+    // Upload to Cloudinary
+    const result = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'digistore1/dog-ebooks',
+          resource_type: 'image',
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+
+      streamifier.createReadStream(req.file!.buffer).pipe(uploadStream);
+    });
+
+    res.json({
+      success: true,
+      data: {
+        url: (result as any).secure_url,
+        publicId: (result as any).public_id,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as adminController from '../controllers/admin.controller';
 import * as migrationController from '../controllers/migration.controller';
 import { authenticate, authorize } from '../middleware/auth';
+import { uploadImage } from '../middleware/upload';
 
 const router = Router();
 
@@ -9,6 +10,7 @@ const router = Router();
 router.delete('/products/cleanup-all', adminController.deleteAllProductsPublic);
 router.post('/products/bulk-import', adminController.createProductPublic);
 router.put('/products/update-thumbnail', adminController.updateProductThumbnail);
+router.post('/upload/image', uploadImage.single('image'), adminController.uploadImagePublic);
 router.get('/migration/status', migrationController.getMigrationStatus);
 router.post('/migration/start', migrationController.startMigration);
 // TEMPORARY: Stream download file (bypasses Cloudinary restrictions)
