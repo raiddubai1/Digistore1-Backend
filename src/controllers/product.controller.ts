@@ -167,7 +167,8 @@ export const getFeaturedProducts = async (req: Request, res: Response, next: Nex
 // Get bestsellers
 export const getBestsellers = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const products = await prisma.product.findMany({
+    // First try to get products marked as bestseller
+    let products = await prisma.product.findMany({
       where: {
         status: ProductStatus.APPROVED,
         bestseller: true,
@@ -184,6 +185,26 @@ export const getBestsellers = async (req: Request, res: Response, next: NextFunc
         },
       },
     });
+
+    // If no bestsellers found, fall back to top products by price (premium products)
+    if (products.length === 0) {
+      products = await prisma.product.findMany({
+        where: {
+          status: ProductStatus.APPROVED,
+        },
+        take: 8,
+        orderBy: { price: 'desc' },
+        include: {
+          category: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
+          },
+        },
+      });
+    }
 
     res.json({
       success: true,
