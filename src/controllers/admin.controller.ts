@@ -987,7 +987,7 @@ export const createCategoryPublic = async (req: Request, res: Response, next: Ne
         parentId: parentId || null,
         icon: icon || null,
         description: description || null,
-        isActive: true,
+        active: true,
       },
     });
 
