@@ -944,3 +944,89 @@ export const deleteCategoryPublic = async (req: Request, res: Response, next: Ne
     next(error);
   }
 };
+
+// Create a category with optional parent (for reorganization)
+export const createCategoryPublic = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (secret !== 'cleanup-digistore1-2024') {
+      throw new AppError('Unauthorized', 401);
+    }
+
+    const { name, parentId, icon, description } = req.body;
+
+    if (!name) {
+      throw new AppError('name is required', 400);
+    }
+
+    // Generate slug from name
+    const slug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .trim();
+
+    // Check if category with same slug exists
+    const existing = await prisma.category.findFirst({
+      where: { slug },
+    });
+
+    if (existing) {
+      // Return existing category
+      return res.json({
+        success: true,
+        data: { category: existing, existed: true },
+      });
+    }
+
+    const category = await prisma.category.create({
+      data: {
+        name,
+        slug,
+        parentId: parentId || null,
+        icon: icon || null,
+        description: description || null,
+        isActive: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: { category, existed: false },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Delete a product by slug (for cleanup)
+export const deleteProductPublic = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (secret !== 'cleanup-digistore1-2024') {
+      throw new AppError('Unauthorized', 401);
+    }
+
+    const { slug } = req.params;
+
+    const product = await prisma.product.findFirst({
+      where: { slug },
+    });
+
+    if (!product) {
+      throw new AppError('Product not found', 404);
+    }
+
+    await prisma.product.delete({
+      where: { id: product.id },
+    });
+
+    res.json({
+      success: true,
+      message: 'Product deleted successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
