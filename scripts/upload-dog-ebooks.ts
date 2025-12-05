@@ -12,7 +12,7 @@ const s3 = new AWS.S3({
 
 const BUCKET_NAME = process.env.AWS_S3_BUCKET || 'digistore1-downloads';
 const FOLDER_PATH = '/Users/raidf/Downloads/ALL ABOUT DOGS';
-const CATEGORY_ID = 'cmisl0ibx001vdy3gurpcfltm'; // Pets & Animals
+const CATEGORY_NAME = 'Pets & Animals'; // Will be created if doesn't exist
 const API_URL = 'https://digistore1-backend.onrender.com';
 const ADMIN_SECRET = 'cleanup-digistore1-2024';
 
@@ -135,7 +135,7 @@ async function main() {
         shortDescription: shortDesc,
         price,
         originalPrice,
-        categoryId: CATEGORY_ID,
+        categoryName: CATEGORY_NAME,
         subcategory: 'Dogs',
         tags,
         fileType: 'pdf',

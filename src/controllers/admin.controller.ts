@@ -623,6 +623,7 @@ export const createProductPublic = async (req: Request, res: Response, next: Nex
       price,
       originalPrice,
       categoryId,
+      categoryName,
       subcategory,
       tags,
       fileType,
@@ -641,6 +642,36 @@ export const createProductPublic = async (req: Request, res: Response, next: Nex
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
 
+    // Get or create category
+    let finalCategoryId = categoryId;
+    if (categoryName && !categoryId) {
+      const catSlug = categoryName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      let category = await prisma.category.findFirst({ where: { slug: catSlug } });
+      if (!category) {
+        category = await prisma.category.create({
+          data: {
+            name: categoryName,
+            slug: catSlug,
+            description: `${categoryName} digital products`,
+          },
+        });
+      }
+      finalCategoryId = category.id;
+    } else if (categoryId) {
+      // Check if category exists, if not create a placeholder
+      const existingCat = await prisma.category.findUnique({ where: { id: categoryId } });
+      if (!existingCat) {
+        const newCat = await prisma.category.create({
+          data: {
+            name: 'Pets & Animals',
+            slug: 'pets-animals',
+            description: 'Pets & Animals digital products',
+          },
+        });
+        finalCategoryId = newCat.id;
+      }
+    }
+
     // Check if slug already exists
     const existingProduct = await prisma.product.findUnique({
       where: { slug },
@@ -650,17 +681,18 @@ export const createProductPublic = async (req: Request, res: Response, next: Nex
       throw new AppError('A product with this title already exists', 400);
     }
 
+    // Get admin user
+    const adminUser = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
+    if (!adminUser) {
+      throw new AppError('No admin user found', 500);
+    }
+
     // Get or create a default vendor profile for admin imports
     let defaultVendor = await prisma.vendorProfile.findFirst({
-      where: { businessName: 'DigiStore Official' },
+      where: { userId: adminUser.id },
     });
 
     if (!defaultVendor) {
-      // Get admin user
-      const adminUser = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
-      if (!adminUser) {
-        throw new AppError('No admin user found', 500);
-      }
       defaultVendor = await prisma.vendorProfile.create({
         data: {
           userId: adminUser.id,
@@ -683,7 +715,7 @@ export const createProductPublic = async (req: Request, res: Response, next: Nex
         price,
         originalPrice: originalPrice || price,
         discount: originalPrice ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0,
-        categoryId,
+        categoryId: finalCategoryId,
         subcategory,
         tags: tags || [],
         fileType,
