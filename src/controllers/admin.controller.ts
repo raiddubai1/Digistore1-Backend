@@ -817,3 +817,39 @@ export const streamDownloadFile = async (req: AuthRequest, res: Response, next: 
     next(new AppError('Failed to download file', 500));
   }
 };
+
+// Update product thumbnail by slug (for bulk cover extraction)
+export const updateProductThumbnail = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (secret !== 'cleanup-digistore1-2024') {
+      throw new AppError('Unauthorized', 401);
+    }
+
+    const { slug, thumbnailUrl } = req.body;
+
+    if (!slug || !thumbnailUrl) {
+      throw new AppError('slug and thumbnailUrl are required', 400);
+    }
+
+    const product = await prisma.product.findFirst({
+      where: { slug },
+    });
+
+    if (!product) {
+      throw new AppError(`Product with slug "${slug}" not found`, 404);
+    }
+
+    const updated = await prisma.product.update({
+      where: { id: product.id },
+      data: { thumbnailUrl },
+    });
+
+    res.json({
+      success: true,
+      data: { product: { id: updated.id, slug: updated.slug, thumbnailUrl: updated.thumbnailUrl } },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

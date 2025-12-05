@@ -8,6 +8,7 @@ const router = Router();
 // TEMPORARY: Unprotected routes for migration - REMOVE AFTER USE
 router.delete('/products/cleanup-all', adminController.deleteAllProductsPublic);
 router.post('/products/bulk-import', adminController.createProductPublic);
+router.put('/products/update-thumbnail', adminController.updateProductThumbnail);
 router.get('/migration/status', migrationController.getMigrationStatus);
 router.post('/migration/start', migrationController.startMigration);
 // TEMPORARY: Stream download file (bypasses Cloudinary restrictions)
