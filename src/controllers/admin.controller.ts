@@ -826,10 +826,14 @@ export const updateProductThumbnail = async (req: Request, res: Response, next: 
       throw new AppError('Unauthorized', 401);
     }
 
-    const { slug, thumbnailUrl } = req.body;
+    const { slug, thumbnailUrl, price } = req.body;
 
-    if (!slug || !thumbnailUrl) {
-      throw new AppError('slug and thumbnailUrl are required', 400);
+    if (!slug) {
+      throw new AppError('slug is required', 400);
+    }
+
+    if (thumbnailUrl === undefined && price === undefined) {
+      throw new AppError('thumbnailUrl or price is required', 400);
     }
 
     const product = await prisma.product.findFirst({
@@ -840,14 +844,18 @@ export const updateProductThumbnail = async (req: Request, res: Response, next: 
       throw new AppError(`Product with slug "${slug}" not found`, 404);
     }
 
+    const updateData: { thumbnailUrl?: string; price?: number } = {};
+    if (thumbnailUrl !== undefined) updateData.thumbnailUrl = thumbnailUrl;
+    if (price !== undefined) updateData.price = price;
+
     const updated = await prisma.product.update({
       where: { id: product.id },
-      data: { thumbnailUrl },
+      data: updateData,
     });
 
     res.json({
       success: true,
-      data: { product: { id: updated.id, slug: updated.slug, thumbnailUrl: updated.thumbnailUrl } },
+      data: { product: { id: updated.id, slug: updated.slug, thumbnailUrl: updated.thumbnailUrl, price: updated.price } },
     });
   } catch (error) {
     next(error);
