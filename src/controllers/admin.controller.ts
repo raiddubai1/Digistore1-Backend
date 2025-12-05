@@ -826,14 +826,14 @@ export const updateProductThumbnail = async (req: Request, res: Response, next: 
       throw new AppError('Unauthorized', 401);
     }
 
-    const { slug, thumbnailUrl, price } = req.body;
+    const { slug, thumbnailUrl, price, categoryId } = req.body;
 
     if (!slug) {
       throw new AppError('slug is required', 400);
     }
 
-    if (thumbnailUrl === undefined && price === undefined) {
-      throw new AppError('thumbnailUrl or price is required', 400);
+    if (thumbnailUrl === undefined && price === undefined && categoryId === undefined) {
+      throw new AppError('thumbnailUrl, price, or categoryId is required', 400);
     }
 
     const product = await prisma.product.findFirst({
@@ -844,9 +844,10 @@ export const updateProductThumbnail = async (req: Request, res: Response, next: 
       throw new AppError(`Product with slug "${slug}" not found`, 404);
     }
 
-    const updateData: { thumbnailUrl?: string; price?: number } = {};
+    const updateData: { thumbnailUrl?: string; price?: number; categoryId?: string } = {};
     if (thumbnailUrl !== undefined) updateData.thumbnailUrl = thumbnailUrl;
     if (price !== undefined) updateData.price = price;
+    if (categoryId !== undefined) updateData.categoryId = categoryId;
 
     const updated = await prisma.product.update({
       where: { id: product.id },
@@ -893,6 +894,51 @@ export const uploadImagePublic = async (req: AuthRequest, res: Response, next: N
         url: (result as any).secure_url,
         publicId: (result as any).public_id,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Delete a category by ID (admin only - for reorganization)
+export const deleteCategoryPublic = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (secret !== 'cleanup-digistore1-2024') {
+      throw new AppError('Unauthorized', 401);
+    }
+
+    const { categoryId } = req.params;
+
+    if (!categoryId) {
+      throw new AppError('categoryId is required', 400);
+    }
+
+    // Check if category has products
+    const productsCount = await prisma.product.count({
+      where: { categoryId },
+    });
+
+    if (productsCount > 0) {
+      throw new AppError(`Cannot delete category with ${productsCount} products. Move products first.`, 400);
+    }
+
+    // Check if category has children
+    const childrenCount = await prisma.category.count({
+      where: { parentId: categoryId },
+    });
+
+    if (childrenCount > 0) {
+      throw new AppError(`Cannot delete category with ${childrenCount} subcategories. Delete subcategories first.`, 400);
+    }
+
+    await prisma.category.delete({
+      where: { id: categoryId },
+    });
+
+    res.json({
+      success: true,
+      message: 'Category deleted successfully',
     });
   } catch (error) {
     next(error);

@@ -11,6 +11,7 @@ router.delete('/products/cleanup-all', adminController.deleteAllProductsPublic);
 router.post('/products/bulk-import', adminController.createProductPublic);
 router.put('/products/update-thumbnail', adminController.updateProductThumbnail);
 router.post('/upload/image', uploadImage.single('image'), adminController.uploadImagePublic);
+router.delete('/categories/:categoryId', adminController.deleteCategoryPublic);
 router.get('/migration/status', migrationController.getMigrationStatus);
 router.post('/migration/start', migrationController.startMigration);
 // TEMPORARY: Stream download file (bypasses Cloudinary restrictions)
