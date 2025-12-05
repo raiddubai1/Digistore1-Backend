@@ -440,12 +440,16 @@ export const createProductAdmin = async (req: AuthRequest, res: Response, next: 
       price,
       originalPrice,
       categoryId,
+      subcategory,
+      tags,
       fileType,
       fileSize,
       fileUrl,
       fileName,
       thumbnailUrl,
       previewImages,
+      whatsIncluded,
+      requirements,
       status = 'APPROVED',
     } = req.body;
 
@@ -494,12 +498,16 @@ export const createProductAdmin = async (req: AuthRequest, res: Response, next: 
         originalPrice: originalPrice || price,
         discount: originalPrice ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0,
         categoryId,
+        subcategory,
+        tags: tags || [],
         fileType,
         fileSize: fileSize ? BigInt(fileSize) : null,
         fileUrl,
         fileName,
         thumbnailUrl,
         previewImages: previewImages || [],
+        whatsIncluded: whatsIncluded || [],
+        requirements: requirements || [],
         vendorId: defaultVendor.id,
         status: status as any,
         featured: false,
@@ -593,6 +601,113 @@ export const deleteAllProductsPublic = async (req: Request, res: Response, next:
       success: true,
       message: `Deleted ${result.count} products, all categories, and all related data`,
       data: { deletedCount: result.count },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// TEMPORARY: Public endpoint for bulk product import - uses admin secret
+export const createProductPublic = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Security: require admin secret
+    const secret = req.headers['x-admin-secret'] || req.query.secret;
+    if (secret !== 'cleanup-digistore1-2024') {
+      throw new AppError('Invalid admin secret', 403);
+    }
+
+    const {
+      title,
+      description,
+      shortDescription,
+      price,
+      originalPrice,
+      categoryId,
+      subcategory,
+      tags,
+      fileType,
+      fileSize,
+      fileUrl,
+      fileName,
+      thumbnailUrl,
+      previewImages,
+      whatsIncluded,
+      requirements,
+    } = req.body;
+
+    // Generate slug from title
+    const slug = title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+
+    // Check if slug already exists
+    const existingProduct = await prisma.product.findUnique({
+      where: { slug },
+    });
+
+    if (existingProduct) {
+      throw new AppError('A product with this title already exists', 400);
+    }
+
+    // Get or create a default vendor profile for admin imports
+    let defaultVendor = await prisma.vendorProfile.findFirst({
+      where: { businessName: 'DigiStore Official' },
+    });
+
+    if (!defaultVendor) {
+      // Get admin user
+      const adminUser = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
+      if (!adminUser) {
+        throw new AppError('No admin user found', 500);
+      }
+      defaultVendor = await prisma.vendorProfile.create({
+        data: {
+          userId: adminUser.id,
+          businessName: 'DigiStore Official',
+          businessEmail: 'admin@digistore1.com',
+          description: 'Official DigiStore store products',
+          verified: true,
+          autoApproveProducts: true,
+        },
+      });
+    }
+
+    // Create product
+    const product = await prisma.product.create({
+      data: {
+        title,
+        slug,
+        description,
+        shortDescription,
+        price,
+        originalPrice: originalPrice || price,
+        discount: originalPrice ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0,
+        categoryId,
+        subcategory,
+        tags: tags || [],
+        fileType,
+        fileSize: fileSize ? BigInt(fileSize) : null,
+        fileUrl,
+        fileName,
+        thumbnailUrl,
+        previewImages: previewImages || [],
+        whatsIncluded: whatsIncluded || [],
+        requirements: requirements || [],
+        vendorId: defaultVendor.id,
+        status: 'APPROVED' as any,
+        featured: false,
+        bestseller: false,
+        newArrival: true,
+      },
+      include: {
+        category: true,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      data: { product },
     });
   } catch (error) {
     next(error);
