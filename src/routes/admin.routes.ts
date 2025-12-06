@@ -11,7 +11,6 @@ router.delete('/products/cleanup-all', adminController.deleteAllProductsPublic);
 router.post('/products/bulk-import', adminController.createProductPublic);
 router.put('/products/update-thumbnail', adminController.updateProductThumbnail);
 router.post('/upload/image', uploadImage.single('image'), adminController.uploadImagePublic);
-router.delete('/categories/:categoryId', adminController.deleteCategoryPublic);
 router.post('/categories', adminController.createCategoryPublic);
 router.delete('/products/:slug', adminController.deleteProductPublic);
 router.get('/migration/status', migrationController.getMigrationStatus);
@@ -19,10 +18,12 @@ router.post('/migration/start', migrationController.startMigration);
 // TEMPORARY: Stream download file (bypasses Cloudinary restrictions)
 router.get('/products/:productId/download', adminController.streamDownloadFile);
 
-// NEW: Category restructuring endpoints
+// NEW: Category restructuring endpoints (more specific routes first)
 router.delete('/categories/:categoryId/products', adminController.deleteProductsByCategoryPublic);
 router.post('/products/move-category', adminController.moveProductsBetweenCategories);
 router.delete('/categories/:categoryId/force', adminController.forceDeleteCategoryPublic);
+// Generic category delete (after more specific routes)
+router.delete('/categories/:categoryId', adminController.deleteCategoryPublic);
 
 // All routes require admin authentication
 router.use(authenticate);
