@@ -19,6 +19,11 @@ router.post('/migration/start', migrationController.startMigration);
 // TEMPORARY: Stream download file (bypasses Cloudinary restrictions)
 router.get('/products/:productId/download', adminController.streamDownloadFile);
 
+// NEW: Category restructuring endpoints
+router.delete('/categories/:categoryId/products', adminController.deleteProductsByCategoryPublic);
+router.post('/products/move-category', adminController.moveProductsBetweenCategories);
+router.delete('/categories/:categoryId/force', adminController.forceDeleteCategoryPublic);
+
 // All routes require admin authentication
 router.use(authenticate);
 router.use(authorize('ADMIN'));

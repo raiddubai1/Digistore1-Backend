@@ -1030,3 +1030,188 @@ export const deleteProductPublic = async (req: Request, res: Response, next: Nex
     next(error);
   }
 };
+
+// Delete all products in a category (for category cleanup)
+export const deleteProductsByCategoryPublic = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (secret !== 'cleanup-digistore1-2024') {
+      throw new AppError('Unauthorized', 401);
+    }
+
+    const { categoryId } = req.params;
+
+    if (!categoryId) {
+      throw new AppError('categoryId is required', 400);
+    }
+
+    // Delete related records first to avoid foreign key constraints
+    const products = await prisma.product.findMany({
+      where: { categoryId },
+      select: { id: true, title: true },
+    });
+
+    if (products.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No products found in this category',
+        deletedCount: 0,
+      });
+    }
+
+    const productIds = products.map(p => p.id);
+
+    // Delete related records
+    await prisma.orderItem.deleteMany({ where: { productId: { in: productIds } } });
+    await prisma.productAttribute.deleteMany({ where: { productId: { in: productIds } } });
+    await prisma.download.deleteMany({ where: { productId: { in: productIds } } });
+    await prisma.review.deleteMany({ where: { productId: { in: productIds } } });
+    await prisma.wishlist.deleteMany({ where: { productId: { in: productIds } } });
+
+    // Delete products
+    const result = await prisma.product.deleteMany({
+      where: { categoryId },
+    });
+
+    res.json({
+      success: true,
+      message: `Deleted ${result.count} products from category`,
+      deletedCount: result.count,
+      deletedProducts: products.map(p => p.title),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Move all products from one category to another
+export const moveProductsBetweenCategories = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (secret !== 'cleanup-digistore1-2024') {
+      throw new AppError('Unauthorized', 401);
+    }
+
+    const { fromCategoryId, toCategoryId } = req.body;
+
+    if (!fromCategoryId || !toCategoryId) {
+      throw new AppError('fromCategoryId and toCategoryId are required', 400);
+    }
+
+    // Verify both categories exist
+    const [fromCat, toCat] = await Promise.all([
+      prisma.category.findUnique({ where: { id: fromCategoryId } }),
+      prisma.category.findUnique({ where: { id: toCategoryId } }),
+    ]);
+
+    if (!fromCat) {
+      throw new AppError('Source category not found', 404);
+    }
+    if (!toCat) {
+      throw new AppError('Destination category not found', 404);
+    }
+
+    // Get products to move
+    const products = await prisma.product.findMany({
+      where: { categoryId: fromCategoryId },
+      select: { id: true, title: true },
+    });
+
+    if (products.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No products to move',
+        movedCount: 0,
+      });
+    }
+
+    // Move products
+    const result = await prisma.product.updateMany({
+      where: { categoryId: fromCategoryId },
+      data: { categoryId: toCategoryId },
+    });
+
+    res.json({
+      success: true,
+      message: `Moved ${result.count} products from "${fromCat.name}" to "${toCat.name}"`,
+      movedCount: result.count,
+      movedProducts: products.map(p => p.title),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Force delete a category (including children and products)
+export const forceDeleteCategoryPublic = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (secret !== 'cleanup-digistore1-2024') {
+      throw new AppError('Unauthorized', 401);
+    }
+
+    const { categoryId } = req.params;
+
+    if (!categoryId) {
+      throw new AppError('categoryId is required', 400);
+    }
+
+    // Get all descendant categories recursively
+    const getAllDescendants = async (parentId: string): Promise<string[]> => {
+      const children = await prisma.category.findMany({
+        where: { parentId },
+        select: { id: true },
+      });
+
+      const allIds: string[] = [];
+      for (const child of children) {
+        allIds.push(child.id);
+        const descendants = await getAllDescendants(child.id);
+        allIds.push(...descendants);
+      }
+      return allIds;
+    };
+
+    const descendantIds = await getAllDescendants(categoryId);
+    const allCategoryIds = [categoryId, ...descendantIds];
+
+    // Get all products in these categories
+    const products = await prisma.product.findMany({
+      where: { categoryId: { in: allCategoryIds } },
+      select: { id: true },
+    });
+    const productIds = products.map(p => p.id);
+
+    let deletedProductsCount = 0;
+    if (productIds.length > 0) {
+      // Delete related records
+      await prisma.orderItem.deleteMany({ where: { productId: { in: productIds } } });
+      await prisma.productAttribute.deleteMany({ where: { productId: { in: productIds } } });
+      await prisma.download.deleteMany({ where: { productId: { in: productIds } } });
+      await prisma.review.deleteMany({ where: { productId: { in: productIds } } });
+      await prisma.wishlist.deleteMany({ where: { productId: { in: productIds } } });
+
+      // Delete products
+      const result = await prisma.product.deleteMany({
+        where: { categoryId: { in: allCategoryIds } },
+      });
+      deletedProductsCount = result.count;
+    }
+
+    // Delete categories (children first, then parent)
+    let deletedCategoriesCount = 0;
+    for (const catId of [...descendantIds.reverse(), categoryId]) {
+      await prisma.category.delete({ where: { id: catId } });
+      deletedCategoriesCount++;
+    }
+
+    res.json({
+      success: true,
+      message: `Force deleted category and all descendants`,
+      deletedCategoriesCount,
+      deletedProductsCount,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
