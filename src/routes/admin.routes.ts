@@ -22,6 +22,7 @@ router.get('/products/:productId/download', adminController.streamDownloadFile);
 router.delete('/categories/:categoryId/products', adminController.deleteProductsByCategoryPublic);
 router.post('/products/move-category', adminController.moveProductsBetweenCategories);
 router.delete('/categories/:categoryId/force', adminController.forceDeleteCategoryPublic);
+router.put('/categories/:categoryId', adminController.updateCategoryPublic);
 // Generic category delete (after more specific routes)
 router.delete('/categories/:categoryId', adminController.deleteCategoryPublic);
 

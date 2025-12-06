@@ -953,7 +953,7 @@ export const createCategoryPublic = async (req: Request, res: Response, next: Ne
       throw new AppError('Unauthorized', 401);
     }
 
-    const { name, parentId, icon, description } = req.body;
+    const { name, parentId, icon, description, active } = req.body;
 
     if (!name) {
       throw new AppError('name is required', 400);
@@ -987,13 +987,62 @@ export const createCategoryPublic = async (req: Request, res: Response, next: Ne
         parentId: parentId || null,
         icon: icon || null,
         description: description || null,
-        active: true,
+        active: active !== undefined ? active : true,
       },
     });
 
     res.json({
       success: true,
       data: { category, existed: false },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update a category (for reorganization)
+export const updateCategoryPublic = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const secret = req.headers['x-admin-secret'];
+    if (secret !== 'cleanup-digistore1-2024') {
+      throw new AppError('Unauthorized', 401);
+    }
+
+    const { categoryId } = req.params;
+    const { name, parentId, icon, description, active } = req.body;
+
+    const category = await prisma.category.findUnique({
+      where: { id: categoryId },
+    });
+
+    if (!category) {
+      throw new AppError('Category not found', 404);
+    }
+
+    const updateData: { name?: string; slug?: string; parentId?: string | null; icon?: string | null; description?: string | null; active?: boolean } = {};
+
+    if (name !== undefined) {
+      updateData.name = name;
+      updateData.slug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .trim();
+    }
+    if (parentId !== undefined) updateData.parentId = parentId;
+    if (icon !== undefined) updateData.icon = icon;
+    if (description !== undefined) updateData.description = description;
+    if (active !== undefined) updateData.active = active;
+
+    const updated = await prisma.category.update({
+      where: { id: categoryId },
+      data: updateData,
+    });
+
+    res.json({
+      success: true,
+      data: { category: updated },
     });
   } catch (error) {
     next(error);
