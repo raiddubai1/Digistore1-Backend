@@ -61,6 +61,18 @@ router.post(
   authController.resetPassword
 );
 
+// Change password (authenticated)
+router.post(
+  '/change-password',
+  authenticate,
+  [
+    body('currentPassword').notEmpty(),
+    body('newPassword').isLength({ min: 8 }),
+  ],
+  validate,
+  authController.changePassword
+);
+
 // Social login - Google
 router.post(
   '/google',

@@ -381,6 +381,56 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
   }
 };
 
+// Change password (authenticated user)
+export const changePassword = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user) {
+      throw new AppError('Not authenticated', 401);
+    }
+
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      throw new AppError('Current password and new password are required', 400);
+    }
+
+    if (newPassword.length < 8) {
+      throw new AppError('Password must be at least 8 characters', 400);
+    }
+
+    // Get user with password
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+    });
+
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+
+    // Verify current password
+    const isValid = await comparePassword(currentPassword, user.password);
+    if (!isValid) {
+      throw new AppError('Current password is incorrect', 400);
+    }
+
+    // Hash new password
+    const hashedPassword = await hashPassword(newPassword);
+
+    // Update password
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    });
+
+    res.json({
+      success: true,
+      message: 'Password changed successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Google Login
 export const googleLogin = async (req: Request, res: Response, next: NextFunction) => {
   try {
