@@ -5,12 +5,15 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
 interface GenerateRequest {
-  type: 'title' | 'shortDescription' | 'description' | 'tags' | 'all';
+  type: 'title' | 'shortDescription' | 'description' | 'tags' | 'imageAlt' | 'all';
   context: {
     fileName?: string;
     category?: string;
     existingTitle?: string;
     existingDescription?: string;
+    productTitle?: string;
+    imageIndex?: number;
+    isMainImage?: boolean;
   };
 }
 
@@ -111,9 +114,31 @@ Requirements:
 - Return as comma-separated list
 
 Just return the tags as comma-separated values, nothing else.`;
-      
+
       const tagsText = await callGemini(prompt);
       result.tags = tagsText.split(',').map((t: string) => t.trim().toLowerCase()).filter((t: string) => t.length > 0);
+    }
+
+    if (type === 'imageAlt') {
+      const { productTitle, imageIndex, isMainImage } = context || {};
+      const imagePosition = isMainImage ? 'main product image' : `product image ${(imageIndex || 0) + 1}`;
+
+      const prompt = `Generate an SEO-optimized alt text for a ${imagePosition}.
+
+Product: "${productTitle || productName}"
+Category: ${categoryName}
+
+Requirements:
+- Be descriptive but concise (50-125 characters)
+- Include the product name/type
+- Describe what the image would show (cover, preview, screenshot, etc.)
+- Include relevant keywords for SEO
+- Don't start with "Image of" or "Picture of"
+- Make it natural and readable
+
+Just return the alt text, nothing else.`;
+
+      result.imageAlt = (await callGemini(prompt)).trim().replace(/^["']|["']$/g, '');
     }
 
     res.json({ success: true, data: result });

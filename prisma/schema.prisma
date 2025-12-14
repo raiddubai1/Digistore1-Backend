@@ -202,7 +202,9 @@ model Product {
   
   // Media
   thumbnailUrl      String
+  thumbnailAlt      String?       // Alt text for thumbnail (SEO)
   previewImages     String[]
+  previewImageAlts  String[]      // Alt texts for preview images (SEO)
   
   // Metadata
   whatsIncluded     String[]
