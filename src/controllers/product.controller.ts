@@ -327,6 +327,9 @@ export const getProductById = async (req: AuthRequest, res: Response, next: Next
             businessName: true,
           },
         },
+        files: {
+          orderBy: { order: 'asc' },
+        },
       },
     });
 
@@ -334,9 +337,22 @@ export const getProductById = async (req: AuthRequest, res: Response, next: Next
       throw new AppError('Product not found', 404);
     }
 
+    // Serialize product with files
+    const serializedProduct = serializeProduct(product);
+    if (product.files) {
+      serializedProduct.files = product.files.map((f: any) => ({
+        id: f.id,
+        fileName: f.fileName,
+        fileUrl: f.fileUrl,
+        fileSize: f.fileSize ? Number(f.fileSize) : null,
+        fileType: f.fileType,
+        order: f.order,
+      }));
+    }
+
     res.json({
       success: true,
-      data: { product: serializeProduct(product) },
+      data: { product: serializedProduct },
     });
   } catch (error) {
     next(error);
@@ -397,6 +413,7 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
       previewImages,
       whatsIncluded,
       requirements,
+      files, // Array of product files
     } = req.body;
 
     // Generate slug from title
@@ -414,40 +431,74 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
       throw new AppError('A product with this title already exists', 400);
     }
 
-    // Create product
-    const product = await prisma.product.create({
-      data: {
-        title,
-        slug,
-        description,
-        shortDescription,
-        price,
-        originalPrice,
-        discount: originalPrice ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0,
-        categoryId,
-        subcategory,
-        tags: tags || [],
-        fileType,
-        fileSize: fileSize ? BigInt(fileSize) : null,
-        fileUrl,
-        fileName,
-        thumbnailUrl,
-        previewImages: previewImages || [],
-        whatsIncluded: whatsIncluded || [],
-        requirements: requirements || [],
-        vendorId: vendorProfile.id,
-        status: vendorProfile.autoApproveProducts ? ProductStatus.APPROVED : ProductStatus.PENDING_REVIEW,
-      },
-      include: {
-        category: true,
-        vendor: {
-          select: {
-            id: true,
-            businessName: true,
-            logo: true,
+    // Create product with files in a transaction
+    const product = await prisma.$transaction(async (tx) => {
+      const newProduct = await tx.product.create({
+        data: {
+          title,
+          slug,
+          description,
+          shortDescription,
+          price,
+          originalPrice,
+          discount: originalPrice ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0,
+          categoryId,
+          subcategory,
+          tags: tags || [],
+          fileType,
+          fileSize: fileSize ? BigInt(fileSize) : null,
+          fileUrl,
+          fileName,
+          thumbnailUrl,
+          previewImages: previewImages || [],
+          whatsIncluded: whatsIncluded || [],
+          requirements: requirements || [],
+          vendorId: vendorProfile.id,
+          status: vendorProfile.autoApproveProducts ? ProductStatus.APPROVED : ProductStatus.PENDING_REVIEW,
+        },
+        include: {
+          category: true,
+          vendor: {
+            select: {
+              id: true,
+              businessName: true,
+              logo: true,
+            },
           },
         },
-      },
+      });
+
+      // Create product files if provided
+      if (files && Array.isArray(files) && files.length > 0) {
+        await tx.productFile.createMany({
+          data: files.map((file: any, index: number) => ({
+            productId: newProduct.id,
+            fileName: file.fileName,
+            fileUrl: file.fileUrl || 'pending-upload',
+            fileSize: file.fileSize ? BigInt(file.fileSize) : null,
+            fileType: file.fileType || '',
+            order: file.order ?? index,
+          })),
+        });
+      }
+
+      // Fetch product with files
+      return tx.product.findUnique({
+        where: { id: newProduct.id },
+        include: {
+          category: true,
+          vendor: {
+            select: {
+              id: true,
+              businessName: true,
+              logo: true,
+            },
+          },
+          files: {
+            orderBy: { order: 'asc' },
+          },
+        },
+      });
     });
 
     res.status(201).json({
@@ -484,7 +535,8 @@ export const updateProduct = async (req: AuthRequest, res: Response, next: NextF
       throw new AppError('You do not have permission to update this product', 403);
     }
 
-    const updateData: any = { ...req.body };
+    const { files, ...restBody } = req.body;
+    const updateData: any = { ...restBody };
 
     // Recalculate discount if prices changed
     if (updateData.price && updateData.originalPrice) {
@@ -506,19 +558,53 @@ export const updateProduct = async (req: AuthRequest, res: Response, next: NextF
       updateData.fileSize = BigInt(updateData.fileSize);
     }
 
-    const product = await prisma.product.update({
-      where: { id },
-      data: updateData,
-      include: {
-        category: true,
-        vendor: {
-          select: {
-            id: true,
-            businessName: true,
-            logo: true,
+    // Update product and files in a transaction
+    const product = await prisma.$transaction(async (tx) => {
+      // Update product
+      const updatedProduct = await tx.product.update({
+        where: { id },
+        data: updateData,
+      });
+
+      // Update files if provided
+      if (files && Array.isArray(files)) {
+        // Delete existing files
+        await tx.productFile.deleteMany({
+          where: { productId: id },
+        });
+
+        // Create new files
+        if (files.length > 0) {
+          await tx.productFile.createMany({
+            data: files.map((file: any, index: number) => ({
+              productId: id,
+              fileName: file.fileName,
+              fileUrl: file.fileUrl || 'pending-upload',
+              fileSize: file.fileSize ? BigInt(file.fileSize) : null,
+              fileType: file.fileType || '',
+              order: file.order ?? index,
+            })),
+          });
+        }
+      }
+
+      // Fetch product with all relations
+      return tx.product.findUnique({
+        where: { id },
+        include: {
+          category: true,
+          vendor: {
+            select: {
+              id: true,
+              businessName: true,
+              logo: true,
+            },
+          },
+          files: {
+            orderBy: { order: 'asc' },
           },
         },
-      },
+      });
     });
 
     res.json({

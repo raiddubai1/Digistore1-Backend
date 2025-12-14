@@ -237,6 +237,7 @@ model Product {
   wishlist          Wishlist[]
   downloads         Download[]
   productAttributes ProductAttribute[]
+  files             ProductFile[]
 
   @@index([slug])
   @@index([categoryId])
@@ -245,6 +246,22 @@ model Product {
   @@index([featured])
   @@index([bestseller])
   @@map("products")
+}
+
+// Product Files (for multiple downloadable files per product)
+model ProductFile {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  fileName    String
+  fileUrl     String
+  fileSize    BigInt?
+  fileType    String
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([productId])
+  @@map("product_files")
 }
 
 // ============================================

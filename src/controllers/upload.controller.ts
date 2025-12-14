@@ -109,6 +109,42 @@ export const uploadProductFile = async (req: Request, res: Response, next: NextF
   }
 };
 
+// Upload multiple product files to S3
+export const uploadProductFiles = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
+      throw new AppError('No files uploaded', 400);
+    }
+
+    const uploadPromises = req.files.map(async (file, index) => {
+      const timestamp = Date.now();
+      const sanitizedFileName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const s3Key = `products/${timestamp}-${index}-${sanitizedFileName}`;
+
+      const result = await uploadToS3(file.buffer, s3Key, file.mimetype);
+
+      return {
+        url: result.url,
+        key: result.key,
+        fileName: file.originalname,
+        fileSize: file.size,
+        fileType: file.mimetype,
+      };
+    });
+
+    const results = await Promise.all(uploadPromises);
+
+    res.json({
+      success: true,
+      data: {
+        files: results,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Delete image
 export const deleteImage = async (req: Request, res: Response, next: NextFunction) => {
   try {
