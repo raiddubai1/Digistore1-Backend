@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent';
+// Using gemini-1.5-flash for better quota availability
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
 interface GenerateRequest {
   type: 'title' | 'shortDescription' | 'description' | 'tags' | 'all';
