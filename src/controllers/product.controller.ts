@@ -3,6 +3,8 @@ import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth';
 import { Prisma, ProductStatus } from '@prisma/client';
+import { deleteFromS3 } from '../config/s3';
+import cloudinary from '../config/cloudinary';
 
 // Helper function to serialize BigInt and Decimal fields
 const serializeProduct = (product: any) => ({
@@ -617,6 +619,32 @@ export const updateProduct = async (req: AuthRequest, res: Response, next: NextF
   }
 };
 
+// Helper function to extract Cloudinary public ID from URL
+const extractCloudinaryPublicId = (url: string): string | null => {
+  try {
+    // Cloudinary URLs are like: https://res.cloudinary.com/cloud_name/image/upload/v123/folder/filename.ext
+    const match = url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.\w+)?$/);
+    if (match) {
+      return match[1]; // Returns "folder/filename" without extension
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+// Helper function to extract S3 key from URL
+const extractS3Key = (url: string): string | null => {
+  try {
+    // S3 URLs are like: https://bucket.s3.region.amazonaws.com/products/timestamp-filename.ext
+    const urlObj = new URL(url);
+    // Remove leading slash
+    return urlObj.pathname.substring(1);
+  } catch {
+    return null;
+  }
+};
+
 // Delete product
 export const deleteProduct = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
@@ -626,10 +654,13 @@ export const deleteProduct = async (req: AuthRequest, res: Response, next: NextF
 
     const { id } = req.params;
 
-    // Get product
+    // Get product with files
     const product = await prisma.product.findUnique({
       where: { id },
-      include: { vendor: true },
+      include: {
+        vendor: true,
+        files: true, // Include product files for S3 cleanup
+      },
     });
 
     if (!product) {
@@ -641,8 +672,45 @@ export const deleteProduct = async (req: AuthRequest, res: Response, next: NextF
       throw new AppError('You do not have permission to delete this product', 403);
     }
 
+    // Collect URLs for cloud storage cleanup
+    const cloudinaryUrls: string[] = [];
+    const s3Keys: string[] = [];
+
+    // Add thumbnail URL (Cloudinary)
+    if (product.thumbnailUrl && product.thumbnailUrl.includes('cloudinary')) {
+      cloudinaryUrls.push(product.thumbnailUrl);
+    }
+
+    // Add preview images (Cloudinary)
+    if (product.previewImages && Array.isArray(product.previewImages)) {
+      for (const imgUrl of product.previewImages) {
+        if (typeof imgUrl === 'string' && imgUrl.includes('cloudinary')) {
+          cloudinaryUrls.push(imgUrl);
+        }
+      }
+    }
+
+    // Add product files (S3)
+    if (product.files && product.files.length > 0) {
+      for (const file of product.files) {
+        if (file.fileUrl && file.fileUrl.includes('s3')) {
+          const key = extractS3Key(file.fileUrl);
+          if (key) s3Keys.push(key);
+        }
+      }
+    }
+
+    // Also check the main fileUrl field (S3)
+    if (product.fileUrl && product.fileUrl.includes('s3')) {
+      const key = extractS3Key(product.fileUrl);
+      if (key) s3Keys.push(key);
+    }
+
     // Delete related records first (in transaction)
     await prisma.$transaction(async (tx) => {
+      // Delete product files from database
+      await tx.productFile.deleteMany({ where: { productId: id } });
+
       // Delete product attributes
       await tx.productAttribute.deleteMany({ where: { productId: id } });
 
@@ -661,6 +729,24 @@ export const deleteProduct = async (req: AuthRequest, res: Response, next: NextF
       // Finally delete the product
       await tx.product.delete({ where: { id } });
     });
+
+    // Clean up cloud storage (do this after DB deletion, don't block on it)
+    // Delete from Cloudinary
+    for (const url of cloudinaryUrls) {
+      const publicId = extractCloudinaryPublicId(url);
+      if (publicId) {
+        cloudinary.uploader.destroy(publicId).catch((err: Error) => {
+          console.error(`Failed to delete Cloudinary image ${publicId}:`, err.message);
+        });
+      }
+    }
+
+    // Delete from S3
+    for (const key of s3Keys) {
+      deleteFromS3(key).catch((err: Error) => {
+        console.error(`Failed to delete S3 file ${key}:`, err.message);
+      });
+    }
 
     res.json({
       success: true,
