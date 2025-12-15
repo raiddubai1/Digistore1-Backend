@@ -30,5 +30,19 @@ router.get(
   newsletterController.getSubscribers
 );
 
+// Send promotional email to all subscribers (admin only)
+router.post(
+  '/send-promotion',
+  authenticate,
+  authorize('ADMIN'),
+  [
+    body('subject').notEmpty().withMessage('Subject is required'),
+    body('title').notEmpty().withMessage('Title is required'),
+    body('body').notEmpty().withMessage('Body is required'),
+  ],
+  validate,
+  newsletterController.sendPromotion
+);
+
 export default router;
 

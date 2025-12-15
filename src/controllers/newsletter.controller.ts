@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
-import { sendNewsletterWelcome } from '../services/newsletter.service';
+import { sendNewsletterWelcome, sendPromotionalEmail } from '../services/newsletter.service';
+import { AuthRequest } from '../middleware/auth';
 
 // Subscribe to newsletter
 export const subscribe = async (req: Request, res: Response, next: NextFunction) => {
@@ -89,6 +90,50 @@ export const getSubscribers = async (req: Request, res: Response, next: NextFunc
     res.json({
       success: true,
       data: { subscribers: parsedSubscribers, total: parsedSubscribers.length },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Send promotional email to all subscribers (admin only)
+export const sendPromotion = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user || req.user.role !== 'ADMIN') {
+      throw new AppError('Not authorized', 403);
+    }
+
+    const { subject, title, body, ctaText, ctaUrl } = req.body;
+
+    if (!subject || !title || !body) {
+      throw new AppError('Subject, title, and body are required', 400);
+    }
+
+    // Get all subscribers
+    const subscribers = await prisma.setting.findMany({
+      where: { key: { startsWith: 'newsletter_' } },
+    });
+
+    const emails = subscribers.map((s) => {
+      try {
+        const data = JSON.parse(s.value);
+        return data.email;
+      } catch {
+        return s.key.replace('newsletter_', '');
+      }
+    }).filter(Boolean);
+
+    if (emails.length === 0) {
+      throw new AppError('No subscribers found', 400);
+    }
+
+    // Send promotional emails
+    await sendPromotionalEmail(emails, subject, title, body, ctaText, ctaUrl);
+
+    res.json({
+      success: true,
+      message: `Promotional email sent to ${emails.length} subscribers`,
+      data: { recipientCount: emails.length },
     });
   } catch (error) {
     next(error);
