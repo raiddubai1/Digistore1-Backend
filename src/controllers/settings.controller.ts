@@ -39,6 +39,14 @@ const DEFAULT_SETTINGS = {
   maxLoginAttempts: '5',
   requireEmailVerification: true,
   allowGuestCheckout: false,
+  // Menu Items - Main navigation
+  menuItems: [
+    { id: '1', label: 'Home', href: '/', enabled: true, order: 0 },
+    { id: '2', label: 'Shop', href: '/products', enabled: true, order: 1 },
+    { id: '3', label: 'Categories', href: '/categories', enabled: true, order: 2 },
+    { id: '4', label: 'New Arrivals', href: '/products?sort=newest', enabled: true, order: 3 },
+    { id: '5', label: 'Best Sellers', href: '/products?sort=bestsellers', enabled: true, order: 4 },
+  ],
 };
 
 // Get all settings
@@ -75,7 +83,8 @@ export const getPublicSettings = async (req: AuthRequest, res: Response, next: N
     const publicKeys = [
       'storeName', 'storeTagline', 'storeEmail', 'storePhone', 'storeAddress',
       'storeLogo', 'storeFavicon', 'currency', 'currencySymbol',
-      'stripeEnabled', 'stripePublicKey', 'paypalEnabled', 'allowGuestCheckout'
+      'stripeEnabled', 'stripePublicKey', 'paypalEnabled', 'allowGuestCheckout',
+      'menuItems'
     ];
 
     const settings = await prisma.setting.findMany({
