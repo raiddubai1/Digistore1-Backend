@@ -1264,3 +1264,62 @@ export const forceDeleteCategoryPublic = async (req: Request, res: Response, nex
     next(error);
   }
 };
+
+// Bulk delete tags from all products
+export const bulkDeleteTags = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.user || req.user.role !== 'ADMIN') {
+      throw new AppError('Not authorized', 403);
+    }
+
+    const { tags } = req.body;
+
+    if (!tags || !Array.isArray(tags) || tags.length === 0) {
+      throw new AppError('Tags array is required', 400);
+    }
+
+    // Normalize tags to lowercase
+    const tagsToDelete = tags.map((t: string) => t.toLowerCase().trim());
+
+    // Get all products that have any of these tags
+    const products = await prisma.product.findMany({
+      where: {
+        tags: {
+          hasSome: tagsToDelete,
+        },
+      },
+      select: {
+        id: true,
+        tags: true,
+      },
+    });
+
+    let updatedCount = 0;
+
+    // Update each product to remove the tags
+    for (const product of products) {
+      const newTags = product.tags.filter(
+        (tag) => !tagsToDelete.includes(tag.toLowerCase())
+      );
+
+      if (newTags.length !== product.tags.length) {
+        await prisma.product.update({
+          where: { id: product.id },
+          data: { tags: newTags },
+        });
+        updatedCount++;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Deleted ${tags.length} tag(s) from ${updatedCount} product(s)`,
+      data: {
+        tagsDeleted: tags,
+        productsUpdated: updatedCount,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

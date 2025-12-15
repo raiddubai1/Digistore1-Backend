@@ -56,5 +56,8 @@ router.post('/products', adminController.createProductAdmin);
 // Delete all products (for cleanup)
 router.delete('/products/all', adminController.deleteAllProducts);
 
+// Tags management - bulk delete tags from products
+router.post('/tags/bulk-delete', adminController.bulkDeleteTags);
+
 export default router;
 
