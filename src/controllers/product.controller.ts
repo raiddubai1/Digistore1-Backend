@@ -521,6 +521,8 @@ export const updateProduct = async (req: AuthRequest, res: Response, next: NextF
     }
 
     const { id } = req.params;
+    console.log('[updateProduct] Updating product:', id);
+    console.log('[updateProduct] Request body:', JSON.stringify(req.body, null, 2));
 
     // Get product
     const existingProduct = await prisma.product.findUnique({
@@ -538,7 +540,23 @@ export const updateProduct = async (req: AuthRequest, res: Response, next: NextF
     }
 
     const { files, ...restBody } = req.body;
-    const updateData: any = { ...restBody };
+
+    // Remove any fields that shouldn't be updated directly
+    const updateData: any = {};
+    const allowedFields = [
+      'title', 'description', 'shortDescription', 'price', 'originalPrice',
+      'categoryId', 'subcategory', 'tags', 'fileType', 'fileUrl', 'fileName',
+      'thumbnailUrl', 'previewImages', 'whatsIncluded', 'requirements',
+      'featured', 'bestseller', 'newArrival', 'status'
+    ];
+
+    for (const field of allowedFields) {
+      if (restBody[field] !== undefined) {
+        updateData[field] = restBody[field];
+      }
+    }
+
+    console.log('[updateProduct] Clean update data:', JSON.stringify(updateData, null, 2));
 
     // Recalculate discount if prices changed
     if (updateData.price !== undefined && updateData.originalPrice !== undefined) {
