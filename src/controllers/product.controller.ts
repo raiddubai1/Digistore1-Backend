@@ -541,23 +541,44 @@ export const updateProduct = async (req: AuthRequest, res: Response, next: NextF
     const updateData: any = { ...restBody };
 
     // Recalculate discount if prices changed
-    if (updateData.price && updateData.originalPrice) {
-      updateData.discount = Math.round(
-        ((updateData.originalPrice - updateData.price) / updateData.originalPrice) * 100
-      );
+    if (updateData.price !== undefined && updateData.originalPrice !== undefined) {
+      if (updateData.originalPrice > 0) {
+        updateData.discount = Math.round(
+          ((updateData.originalPrice - updateData.price) / updateData.originalPrice) * 100
+        );
+      } else {
+        updateData.discount = 0;
+      }
     }
 
     // Update slug if title changed
     if (updateData.title && updateData.title !== existingProduct.title) {
-      updateData.slug = updateData.title
+      let newSlug = updateData.title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/(^-|-$)/g, '');
+
+      // Check if slug already exists for a different product
+      const existingSlug = await prisma.product.findFirst({
+        where: {
+          slug: newSlug,
+          id: { not: id },
+        },
+      });
+
+      if (existingSlug) {
+        // Append a random suffix to make it unique
+        newSlug = `${newSlug}-${Date.now().toString(36)}`;
+      }
+
+      updateData.slug = newSlug;
     }
 
-    // Convert fileSize to BigInt if provided
-    if (updateData.fileSize) {
+    // Convert fileSize to BigInt if provided (and not empty string)
+    if (updateData.fileSize && updateData.fileSize !== '') {
       updateData.fileSize = BigInt(updateData.fileSize);
+    } else {
+      delete updateData.fileSize;
     }
 
     // Update product and files in a transaction
