@@ -7,13 +7,25 @@ import { deleteFromS3 } from '../config/s3';
 import cloudinary from '../config/cloudinary';
 
 // Helper function to serialize BigInt and Decimal fields
-const serializeProduct = (product: any) => ({
-  ...product,
-  fileSize: product.fileSize ? Number(product.fileSize) : null,
-  price: Number(product.price),
-  originalPrice: product.originalPrice ? Number(product.originalPrice) : null,
-  rating: Number(product.rating),
-});
+const serializeProduct = (product: any) => {
+  const serialized: any = {
+    ...product,
+    fileSize: product.fileSize ? Number(product.fileSize) : null,
+    price: Number(product.price),
+    originalPrice: product.originalPrice ? Number(product.originalPrice) : null,
+    rating: Number(product.rating),
+  };
+
+  // Also serialize files if they exist
+  if (product.files && Array.isArray(product.files)) {
+    serialized.files = product.files.map((f: any) => ({
+      ...f,
+      fileSize: f.fileSize ? Number(f.fileSize) : null,
+    }));
+  }
+
+  return serialized;
+};
 
 // Get all products with filtering, search, and pagination
 export const getAllProducts = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -651,7 +663,7 @@ export const updateProduct = async (req: AuthRequest, res: Response, next: NextF
     res.json({
       success: true,
       message: 'Product updated successfully',
-      data: { product },
+      data: { product: serializeProduct(product) },
     });
   } catch (error) {
     next(error);
@@ -812,7 +824,7 @@ export const approveProduct = async (req: AuthRequest, res: Response, next: Next
     res.json({
       success: true,
       message: 'Product approved successfully',
-      data: { product },
+      data: { product: serializeProduct(product) },
     });
   } catch (error) {
     next(error);
@@ -836,7 +848,7 @@ export const rejectProduct = async (req: AuthRequest, res: Response, next: NextF
     res.json({
       success: true,
       message: 'Product rejected',
-      data: { product },
+      data: { product: serializeProduct(product) },
     });
   } catch (error) {
     next(error);
