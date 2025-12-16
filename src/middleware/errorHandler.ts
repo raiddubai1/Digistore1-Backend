@@ -62,10 +62,9 @@ export const errorHandler = (
     message = 'Validation failed';
   }
 
-  // Log error in development
-  if (process.env.NODE_ENV === 'development') {
-    console.error('ERROR 💥:', err);
-  }
+  // Always log errors
+  console.error('[errorHandler] ERROR 💥:', err.message);
+  console.error('[errorHandler] Stack:', err.stack);
 
   // Send response
   res.status(statusCode).json({
