@@ -298,6 +298,17 @@ export const getProductBySlug = async (req: AuthRequest, res: Response, next: Ne
             },
           },
         },
+        attributes: {
+          include: {
+            attribute: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+              },
+            },
+          },
+        },
       },
     });
 
