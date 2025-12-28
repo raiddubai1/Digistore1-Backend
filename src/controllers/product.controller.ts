@@ -24,6 +24,12 @@ const serializeProduct = (product: any) => {
     }));
   }
 
+  // Transform productAttributes to attributes for frontend compatibility
+  if (product.productAttributes && Array.isArray(product.productAttributes)) {
+    serialized.attributes = product.productAttributes;
+    delete serialized.productAttributes;
+  }
+
   return serialized;
 };
 
@@ -298,7 +304,7 @@ export const getProductBySlug = async (req: AuthRequest, res: Response, next: Ne
             },
           },
         },
-        attributes: {
+        productAttributes: {
           include: {
             attribute: {
               select: {
