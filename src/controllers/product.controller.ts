@@ -130,6 +130,17 @@ export const getAllProducts = async (req: AuthRequest, res: Response, next: Next
               slug: true,
             },
           },
+          productAttributes: {
+            include: {
+              attribute: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                },
+              },
+            },
+          },
         },
       }),
       prisma.product.count({ where }),
