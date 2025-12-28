@@ -860,6 +860,43 @@ export const rejectProduct = async (req: AuthRequest, res: Response, next: NextF
   }
 };
 
+// Get suggestions for tags, whatsIncluded, and requirements from existing products
+export const getProductSuggestions = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Get all products and extract unique values
+    const products = await prisma.product.findMany({
+      select: {
+        tags: true,
+        whatsIncluded: true,
+        requirements: true,
+      },
+    });
+
+    // Extract unique values
+    const tagsSet = new Set<string>();
+    const whatsIncludedSet = new Set<string>();
+    const requirementsSet = new Set<string>();
+
+    products.forEach((product) => {
+      product.tags?.forEach((tag) => tagsSet.add(tag));
+      product.whatsIncluded?.forEach((item) => whatsIncludedSet.add(item));
+      product.requirements?.forEach((req) => requirementsSet.add(req));
+    });
+
+    res.json({
+      success: true,
+      data: {
+        tags: Array.from(tagsSet).sort(),
+        whatsIncluded: Array.from(whatsIncludedSet).sort(),
+        requirements: Array.from(requirementsSet).sort(),
+      },
+    });
+  } catch (error) {
+    console.error('getProductSuggestions error:', error);
+    next(error);
+  }
+};
+
 // Bulk import products with secret key authentication
 export const bulkImportProducts = async (req: Request, res: Response, next: NextFunction) => {
   try {
