@@ -194,6 +194,7 @@ export const capturePayPalOrderHandler = async (req: AuthRequest, res: Response,
             price: Number(item.price),
             quantity: item.quantity,
             license: item.license,
+            canvaTemplateLink: item.product.canvaTemplateLink || undefined,
           })),
         }
       );
@@ -447,6 +448,7 @@ export const createFreeOrder = async (req: AuthRequest, res: Response, next: Nex
           price: 0,
           quantity: item.quantity,
           license: item.license,
+          canvaTemplateLink: item.product.canvaTemplateLink || undefined,
         })),
       }
     ).catch((emailError) => {

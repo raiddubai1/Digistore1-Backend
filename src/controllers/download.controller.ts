@@ -32,6 +32,8 @@ export const getMyDownloads = async (req: AuthRequest, res: Response, next: Next
             title: true,
             thumbnailUrl: true,
             slug: true,
+            canvaTemplateLink: true,
+            canvaInstructions: true,
           },
         },
       },

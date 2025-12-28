@@ -117,25 +117,51 @@ export const sendOrderConfirmationEmail = async (
       price: number;
       quantity: number;
       license: string;
+      canvaTemplateLink?: string; // Optional: Canva template URL
     }>;
   }
 ) => {
   const orderUrl = `${process.env.FRONTEND_URL}/account?tab=orders`;
-  
+
+  // Separate Canva and downloadable items
+  const canvaItems = order.items.filter(item => item.canvaTemplateLink);
+  const downloadableItems = order.items.filter(item => !item.canvaTemplateLink);
+
   const itemsHtml = order.items.map(item => `
     <tr>
-      <td style="padding: 12px; border-bottom: 1px solid #eee;">${item.title}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #eee;">
+        ${item.title}
+        ${item.canvaTemplateLink ? '<span style="background: #00C4CC; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 8px;">CANVA</span>' : ''}
+      </td>
       <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: center;">${item.license}</td>
       <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity}</td>
       <td style="padding: 12px; border-bottom: 1px solid #eee; text-align: right;">${order.currency} ${item.price.toFixed(2)}</td>
     </tr>
   `).join('');
 
+  // Build Canva links section if there are Canva products
+  const canvaLinksHtml = canvaItems.length > 0 ? `
+    <div style="background: linear-gradient(135deg, #00C4CC 0%, #7B2FF7 100%); border-radius: 8px; padding: 20px; margin: 20px 0; color: white;">
+      <h3 style="margin: 0 0 15px; color: white;">🎨 Your Canva Templates</h3>
+      <p style="margin: 0 0 15px; opacity: 0.9;">These products open directly in Canva - no download required!</p>
+      ${canvaItems.map(item => `
+        <div style="background: rgba(255,255,255,0.15); border-radius: 6px; padding: 12px; margin-bottom: 10px;">
+          <p style="margin: 0 0 8px; font-weight: bold;">${item.title}</p>
+          <a href="${item.canvaTemplateLink}" style="display: inline-block; background: white; color: #7B2FF7; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-weight: bold; font-size: 14px;">Open in Canva →</a>
+        </div>
+      `).join('')}
+    </div>
+  ` : '';
+
+  const downloadMessage = downloadableItems.length > 0
+    ? '<p style="color: #666; font-size: 14px;">Your download links are available in your account for 7 days.</p>'
+    : '';
+
   const content = `
     <h2>Order Confirmed! 🎉</h2>
     <p>Hi ${name},</p>
-    <p>Thank you for your purchase! Your order has been confirmed and your digital products are ready for download.</p>
-    
+    <p>Thank you for your purchase! Your order has been confirmed and your digital products are ready.</p>
+
     <div style="background: #f9f9f9; border-radius: 8px; padding: 20px; margin: 20px 0;">
       <p style="margin: 0 0 10px;"><strong>Order ID:</strong> ${order.id}</p>
       <p style="margin: 0;"><strong>Total:</strong> ${order.currency} ${order.total.toFixed(2)}</p>
@@ -156,15 +182,17 @@ export const sendOrderConfirmationEmail = async (
       </tbody>
     </table>
 
+    ${canvaLinksHtml}
+
     <p style="text-align: center; margin: 30px 0;">
-      <a href="${orderUrl}" class="button">View Order & Download</a>
+      <a href="${orderUrl}" class="button">View Order & Downloads</a>
     </p>
-    
-    <p style="color: #666; font-size: 14px;">Your download links are available in your account for 7 days.</p>
+
+    ${downloadMessage}
   `;
 
   const transporter = createTransporter();
-  
+
   await transporter.sendMail({
     from: process.env.EMAIL_FROM || 'Digistore1 <noreply@digistore1.com>',
     to: email,

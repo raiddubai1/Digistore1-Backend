@@ -25,6 +25,7 @@ import attributeRoutes from './routes/attribute.routes';
 import uploadRoutes from './routes/upload.routes';
 import aiRoutes from './routes/ai.routes';
 import settingsRoutes from './routes/settings.routes';
+import bundleRoutes from './routes/bundle.routes';
 
 // Load environment variables
 dotenv.config();
@@ -44,14 +45,24 @@ const allowedOrigins = process.env.FRONTEND_URL
   ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
   : ['http://localhost:3000'];
 
+// Log allowed origins on startup for debugging
+console.log('Allowed CORS origins:', allowedOrigins);
+
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
 
+    // Check if origin is in allowed list or if wildcard is set
     if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
       callback(null, true);
-    } else {
+    }
+    // Also allow Vercel preview deployments
+    else if (origin.endsWith('.vercel.app')) {
+      callback(null, true);
+    }
+    else {
+      console.warn(`CORS blocked origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -103,6 +114,7 @@ app.use('/api/attributes', attributeRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/bundles', bundleRoutes);
 
 // ============================================
 // ERROR HANDLING

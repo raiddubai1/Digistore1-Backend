@@ -428,6 +428,8 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
       whatsIncluded,
       requirements,
       files, // Array of product files
+      canvaTemplateLink, // Optional: Canva template URL for Canva-based products
+      canvaInstructions, // Optional: Custom instructions for Canva template
     } = req.body;
 
     // Generate slug from title
@@ -467,6 +469,8 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
           previewImages: previewImages || [],
           whatsIncluded: whatsIncluded || [],
           requirements: requirements || [],
+          canvaTemplateLink: canvaTemplateLink || null,
+          canvaInstructions: canvaInstructions || null,
           vendorId: vendorProfile.id,
           status: vendorProfile.autoApproveProducts ? ProductStatus.APPROVED : ProductStatus.PENDING_REVIEW,
         },
@@ -559,7 +563,8 @@ export const updateProduct = async (req: AuthRequest, res: Response, next: NextF
       'title', 'description', 'shortDescription', 'price', 'originalPrice',
       'categoryId', 'subcategory', 'tags', 'fileType', 'fileUrl', 'fileName',
       'thumbnailUrl', 'previewImages', 'whatsIncluded', 'requirements',
-      'featured', 'bestseller', 'newArrival', 'status'
+      'featured', 'bestseller', 'newArrival', 'status',
+      'canvaTemplateLink', 'canvaInstructions' // Canva template delivery fields
     ];
 
     for (const field of allowedFields) {

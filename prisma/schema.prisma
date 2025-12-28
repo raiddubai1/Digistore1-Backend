@@ -209,7 +209,11 @@ model Product {
   // Metadata
   whatsIncluded     String[]
   requirements      String[]
-  
+
+  // Canva Template Delivery (alternative to file download)
+  canvaTemplateLink String?       // If set, product is delivered via Canva link instead of file download
+  canvaInstructions String?       @db.Text // Custom instructions for using the Canva template
+
   // Stats
   rating            Decimal       @default(0) @db.Decimal(3, 2)
   reviewCount       Int           @default(0)
@@ -240,6 +244,7 @@ model Product {
   downloads         Download[]
   productAttributes ProductAttribute[]
   files             ProductFile[]
+  bundles           BundleProduct[]
 
   @@index([slug])
   @@index([categoryId])
@@ -586,6 +591,62 @@ enum ReferralStatus {
   CONVERTED
   PAID
   CANCELLED
+}
+
+// ============================================
+// BUNDLES
+// ============================================
+
+model Bundle {
+  id                String        @id @default(cuid())
+  name              String
+  slug              String        @unique
+  description       String?       @db.Text
+
+  // Pricing
+  bundlePrice       Decimal       @db.Decimal(10, 2)
+  originalPrice     Decimal       @db.Decimal(10, 2)  // Sum of individual product prices
+  discount          Int           @default(0)          // Percentage discount
+
+  // Media
+  image             String?
+
+  // Flags
+  featured          Boolean       @default(false)
+  active            Boolean       @default(true)
+
+  // Validity
+  startsAt          DateTime?
+  expiresAt         DateTime?
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  // Relations
+  products          BundleProduct[]
+
+  @@index([slug])
+  @@index([featured])
+  @@index([active])
+  @@map("bundles")
+}
+
+model BundleProduct {
+  id          String   @id @default(cuid())
+
+  bundleId    String
+  bundle      Bundle   @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@unique([bundleId, productId])
+  @@index([bundleId])
+  @@index([productId])
+  @@map("bundle_products")
 }
 
 // ============================================
