@@ -214,6 +214,9 @@ model Product {
   canvaTemplateLink String?       // If set, product is delivered via Canva link instead of file download
   canvaInstructions String?       @db.Text // Custom instructions for using the Canva template
 
+  // YouTube Video
+  youtubeVideoUrl   String?       // Optional YouTube video URL to display on product page
+
   // Stats
   rating            Decimal       @default(0) @db.Decimal(3, 2)
   reviewCount       Int           @default(0)
