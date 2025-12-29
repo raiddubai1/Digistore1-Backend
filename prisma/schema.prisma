@@ -211,8 +211,9 @@ model Product {
   requirements      String[]
 
   // Canva Template Delivery (alternative to file download)
-  canvaTemplateLink String?       // If set, product is delivered via Canva link instead of file download
-  canvaInstructions String?       @db.Text // Custom instructions for using the Canva template
+  canvaTemplateLink  String?       // Legacy: single Canva link (kept for backward compatibility)
+  canvaTemplateLinks Json?         // Array of {name: string, url: string} for multiple Canva links
+  canvaInstructions  String?       @db.Text // Custom instructions for using the Canva template
 
   // YouTube Video
   youtubeVideoUrl   String?       // Optional YouTube video URL to display on product page

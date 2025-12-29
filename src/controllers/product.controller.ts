@@ -457,6 +457,7 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
       requirements,
       files, // Array of product files
       canvaTemplateLink, // Optional: Canva template URL for Canva-based products
+      canvaTemplateLinks, // Optional: Array of {name, url} for multiple Canva links
       canvaInstructions, // Optional: Custom instructions for Canva template
     } = req.body;
 
@@ -498,6 +499,7 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
           whatsIncluded: whatsIncluded || [],
           requirements: requirements || [],
           canvaTemplateLink: canvaTemplateLink || null,
+          canvaTemplateLinks: canvaTemplateLinks || null,
           canvaInstructions: canvaInstructions || null,
           vendorId: vendorProfile.id,
           status: vendorProfile.autoApproveProducts ? ProductStatus.APPROVED : ProductStatus.PENDING_REVIEW,
@@ -592,7 +594,7 @@ export const updateProduct = async (req: AuthRequest, res: Response, next: NextF
       'categoryId', 'subcategory', 'tags', 'fileType', 'fileUrl', 'fileName',
       'thumbnailUrl', 'previewImages', 'whatsIncluded', 'requirements',
       'featured', 'bestseller', 'newArrival', 'status',
-      'canvaTemplateLink', 'canvaInstructions' // Canva template delivery fields
+      'canvaTemplateLink', 'canvaTemplateLinks', 'canvaInstructions' // Canva template delivery fields
     ];
 
     for (const field of allowedFields) {
