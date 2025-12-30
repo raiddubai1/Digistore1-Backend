@@ -191,6 +191,7 @@ model Product {
   // Category & Tags
   categoryId        String
   category          Category      @relation(fields: [categoryId], references: [id])
+  categoryIds       String[]      @default([]) // Additional categories (up to 3 total including primary)
   subcategory       String?
   tags              String[]
   

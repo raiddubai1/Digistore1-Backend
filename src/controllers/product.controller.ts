@@ -479,6 +479,7 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
       price,
       originalPrice,
       categoryId,
+      categoryIds, // Additional categories (up to 3 total)
       subcategory,
       tags,
       fileType,
@@ -524,6 +525,7 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
           originalPrice,
           discount: originalPrice ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0,
           categoryId,
+          categoryIds: categoryIds || [],
           subcategory,
           tags: tags || [],
           fileType,
@@ -627,7 +629,7 @@ export const updateProduct = async (req: AuthRequest, res: Response, next: NextF
     const updateData: any = {};
     const allowedFields = [
       'title', 'description', 'shortDescription', 'price', 'originalPrice',
-      'categoryId', 'subcategory', 'tags', 'fileType', 'fileUrl', 'fileName',
+      'categoryId', 'categoryIds', 'subcategory', 'tags', 'fileType', 'fileUrl', 'fileName',
       'thumbnailUrl', 'previewImages', 'whatsIncluded', 'requirements',
       'featured', 'bestseller', 'newArrival', 'hotDeal', 'status',
       'canvaTemplateLink', 'canvaTemplateLinks', 'canvaInstructions' // Canva template delivery fields
