@@ -283,8 +283,8 @@ export const getHotDeals = async (req: Request, res: Response, next: NextFunctio
   try {
     const { limit = 12 } = req.query;
 
-    // Get products marked as hot deals
-    let products = await prisma.product.findMany({
+    // Get only products explicitly marked as hot deals
+    const products = await prisma.product.findMany({
       where: {
         status: ProductStatus.APPROVED,
         hotDeal: true,
@@ -301,27 +301,6 @@ export const getHotDeals = async (req: Request, res: Response, next: NextFunctio
         },
       },
     });
-
-    // If no hot deals found, fall back to products with highest discounts
-    if (products.length === 0) {
-      products = await prisma.product.findMany({
-        where: {
-          status: ProductStatus.APPROVED,
-          discount: { gt: 0 },
-        },
-        take: Number(limit),
-        orderBy: { discount: 'desc' },
-        include: {
-          category: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-            },
-          },
-        },
-      });
-    }
 
     res.json({
       success: true,
