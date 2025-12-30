@@ -605,6 +605,7 @@ model Bundle {
   id                String        @id @default(cuid())
   name              String
   slug              String        @unique
+  tagline           String?       // Short subtitle e.g. "1,800 Editable Templates"
   description       String?       @db.Text
 
   // Pricing

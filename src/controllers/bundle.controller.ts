@@ -137,7 +137,7 @@ export const getAllBundlesAdmin = async (req: Request, res: Response, next: Next
 // Create bundle (Admin only)
 export const createBundle = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, description, bundlePrice, image, featured, active, startsAt, expiresAt, productIds } = req.body;
+    const { name, tagline, description, bundlePrice, image, featured, active, startsAt, expiresAt, productIds } = req.body;
 
     if (!name || bundlePrice === undefined) {
       throw new AppError('Name and bundle price are required', 400);
@@ -171,6 +171,7 @@ export const createBundle = async (req: Request, res: Response, next: NextFuncti
       data: {
         name,
         slug,
+        tagline,
         description,
         bundlePrice,
         originalPrice,
@@ -220,7 +221,7 @@ export const createBundle = async (req: Request, res: Response, next: NextFuncti
 export const updateBundle = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { name, description, bundlePrice, image, featured, active, startsAt, expiresAt, productIds } = req.body;
+    const { name, tagline, description, bundlePrice, image, featured, active, startsAt, expiresAt, productIds } = req.body;
 
     const existingBundle = await prisma.bundle.findUnique({ where: { id } });
     if (!existingBundle) {
@@ -238,6 +239,7 @@ export const updateBundle = async (req: Request, res: Response, next: NextFuncti
         .replace(/(^-|-$)/g, '');
     }
 
+    if (tagline !== undefined) updateData.tagline = tagline;
     if (description !== undefined) updateData.description = description;
     if (image !== undefined) updateData.image = image;
     if (featured !== undefined) updateData.featured = featured;
