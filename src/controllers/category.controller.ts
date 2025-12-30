@@ -1,6 +1,24 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middleware/errorHandler';
+import { ProductStatus } from '@prisma/client';
+
+// Helper function to count products for a category (including those with categoryIds)
+async function getProductCountForCategory(categoryId: string): Promise<number> {
+  // Count products where either:
+  // 1. categoryId matches (primary category)
+  // 2. categoryIds array contains this category ID
+  const count = await prisma.product.count({
+    where: {
+      status: ProductStatus.APPROVED,
+      OR: [
+        { categoryId: categoryId },
+        { categoryIds: { has: categoryId } },
+      ],
+    },
+  });
+  return count;
+}
 
 // Get all categories
 export const getAllCategories = async (req: Request, res: Response, next: NextFunction) => {
@@ -16,26 +34,52 @@ export const getAllCategories = async (req: Request, res: Response, next: NextFu
             children: {
               where: { active: true },
               orderBy: { order: 'asc' },
-              include: {
-                _count: {
-                  select: { products: true },
-                },
-              },
-            },
-            _count: {
-              select: { products: true },
             },
           },
-        },
-        _count: {
-          select: { products: true },
         },
       },
     });
 
+    // Calculate proper product counts for each category (including categoryIds)
+    const categoriesWithCounts = await Promise.all(
+      categories.map(async (cat) => {
+        const productCount = await getProductCountForCategory(cat.id);
+
+        // Also update children counts
+        const childrenWithCounts = await Promise.all(
+          (cat.children || []).map(async (child) => {
+            const childCount = await getProductCountForCategory(child.id);
+
+            // Update grandchildren counts
+            const grandchildrenWithCounts = await Promise.all(
+              (child.children || []).map(async (grandchild) => {
+                const grandchildCount = await getProductCountForCategory(grandchild.id);
+                return {
+                  ...grandchild,
+                  _count: { products: grandchildCount },
+                };
+              })
+            );
+
+            return {
+              ...child,
+              children: grandchildrenWithCounts,
+              _count: { products: childCount },
+            };
+          })
+        );
+
+        return {
+          ...cat,
+          children: childrenWithCounts,
+          _count: { products: productCount },
+        };
+      })
+    );
+
     res.json({
       success: true,
-      data: { categories },
+      data: { categories: categoriesWithCounts },
     });
   } catch (error) {
     next(error);
@@ -57,14 +101,6 @@ export const getCategoryBySlug = async (req: Request, res: Response, next: NextF
             children: {
               where: { active: true },
               orderBy: { order: 'asc' },
-              include: {
-                _count: {
-                  select: { products: true },
-                },
-              },
-            },
-            _count: {
-              select: { products: true },
             },
           },
         },
@@ -73,9 +109,6 @@ export const getCategoryBySlug = async (req: Request, res: Response, next: NextF
             parent: true, // Include grandparent for breadcrumbs
           },
         },
-        _count: {
-          select: { products: true },
-        },
       },
     });
 
@@ -83,9 +116,41 @@ export const getCategoryBySlug = async (req: Request, res: Response, next: NextF
       throw new AppError('Category not found', 404);
     }
 
+    // Calculate proper product count (including categoryIds)
+    const productCount = await getProductCountForCategory(category.id);
+
+    // Also update children counts
+    const childrenWithCounts = await Promise.all(
+      (category.children || []).map(async (child) => {
+        const childCount = await getProductCountForCategory(child.id);
+
+        const grandchildrenWithCounts = await Promise.all(
+          (child.children || []).map(async (grandchild) => {
+            const grandchildCount = await getProductCountForCategory(grandchild.id);
+            return {
+              ...grandchild,
+              _count: { products: grandchildCount },
+            };
+          })
+        );
+
+        return {
+          ...child,
+          children: grandchildrenWithCounts,
+          _count: { products: childCount },
+        };
+      })
+    );
+
+    const categoryWithCounts = {
+      ...category,
+      children: childrenWithCounts,
+      _count: { products: productCount },
+    };
+
     res.json({
       success: true,
-      data: { category },
+      data: { category: categoryWithCounts },
     });
   } catch (error) {
     next(error);
