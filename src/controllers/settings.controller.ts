@@ -44,8 +44,8 @@ const DEFAULT_SETTINGS = {
     { id: '1', label: 'Home', href: '/', enabled: true, order: 0 },
     { id: '2', label: 'Shop', href: '/products', enabled: true, order: 1 },
     { id: '3', label: 'Categories', href: '/categories', enabled: true, order: 2 },
-    { id: '4', label: 'New Arrivals', href: '/products?sort=newest', enabled: true, order: 3 },
-    { id: '5', label: 'Best Sellers', href: '/products?sort=bestsellers', enabled: true, order: 4 },
+    { id: '4', label: 'New Arrivals', href: '/products?filter=new', enabled: true, order: 3 },
+    { id: '5', label: 'Best Sellers', href: '/products?filter=bestsellers', enabled: true, order: 4 },
   ],
 };
 
