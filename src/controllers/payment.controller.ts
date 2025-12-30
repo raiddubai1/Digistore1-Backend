@@ -497,7 +497,7 @@ export const checkFirstPurchaseDiscount = async (req: AuthRequest, res: Response
         where: {
           customerId: userId,
           status: {
-            in: ['COMPLETED', 'PROCESSING', 'DELIVERED'],
+            in: ['COMPLETED', 'PROCESSING'],
           },
         },
       });
@@ -533,7 +533,7 @@ export const checkFirstPurchaseDiscount = async (req: AuthRequest, res: Response
             { customer: { email: email } },
           ],
           status: {
-            in: ['COMPLETED', 'PROCESSING', 'DELIVERED'],
+            in: ['COMPLETED', 'PROCESSING'],
           },
         },
       });
