@@ -482,3 +482,103 @@ export const createFreeOrder = async (req: AuthRequest, res: Response, next: Nex
   }
 };
 
+// Check if user is eligible for first-purchase discount
+export const checkFirstPurchaseDiscount = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.id;
+    const email = req.query.email as string;
+
+    // First-purchase discount settings
+    const FIRST_PURCHASE_DISCOUNT_PERCENT = 30;
+
+    // If user is logged in, check their order history
+    if (userId) {
+      const orderCount = await prisma.order.count({
+        where: {
+          customerId: userId,
+          status: {
+            in: ['COMPLETED', 'PROCESSING', 'DELIVERED'],
+          },
+        },
+      });
+
+      if (orderCount === 0) {
+        return res.json({
+          success: true,
+          data: {
+            isFirstPurchase: true,
+            discountPercent: FIRST_PURCHASE_DISCOUNT_PERCENT,
+            message: `Welcome! Enjoy ${FIRST_PURCHASE_DISCOUNT_PERCENT}% off your first purchase!`,
+          },
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          isFirstPurchase: false,
+          discountPercent: 0,
+          message: null,
+        },
+      });
+    }
+
+    // For guest checkout, check by email if provided
+    if (email) {
+      // Check if this email has any completed orders (as guest or registered)
+      const existingOrders = await prisma.order.count({
+        where: {
+          OR: [
+            { billingEmail: email },
+            { customer: { email: email } },
+          ],
+          status: {
+            in: ['COMPLETED', 'PROCESSING', 'DELIVERED'],
+          },
+        },
+      });
+
+      if (existingOrders === 0) {
+        return res.json({
+          success: true,
+          data: {
+            isFirstPurchase: true,
+            discountPercent: FIRST_PURCHASE_DISCOUNT_PERCENT,
+            message: `Welcome! Enjoy ${FIRST_PURCHASE_DISCOUNT_PERCENT}% off your first purchase!`,
+          },
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          isFirstPurchase: false,
+          discountPercent: 0,
+          message: null,
+        },
+      });
+    }
+
+    // If no user and no email, assume first purchase (will validate again at checkout)
+    return res.json({
+      success: true,
+      data: {
+        isFirstPurchase: true,
+        discountPercent: FIRST_PURCHASE_DISCOUNT_PERCENT,
+        message: `Welcome! Enjoy ${FIRST_PURCHASE_DISCOUNT_PERCENT}% off your first purchase!`,
+      },
+    });
+  } catch (error: any) {
+    console.error('First purchase check error:', error);
+    // Return no discount on error (fail safe)
+    return res.json({
+      success: true,
+      data: {
+        isFirstPurchase: false,
+        discountPercent: 0,
+        message: null,
+      },
+    });
+  }
+};
+
