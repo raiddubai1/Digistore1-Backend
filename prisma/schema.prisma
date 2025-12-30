@@ -228,7 +228,8 @@ model Product {
   featured          Boolean       @default(false)
   bestseller        Boolean       @default(false)
   newArrival        Boolean       @default(false)
-  
+  hotDeal           Boolean       @default(false)
+
   // Status
   status            ProductStatus @default(DRAFT)
   rejectionReason   String?
@@ -256,6 +257,7 @@ model Product {
   @@index([status])
   @@index([featured])
   @@index([bestseller])
+  @@index([hotDeal])
   @@map("products")
 }
 

@@ -46,6 +46,7 @@ const DEFAULT_SETTINGS = {
     { id: '3', label: 'Categories', href: '/categories', enabled: true, order: 2 },
     { id: '4', label: 'New Arrivals', href: '/products?filter=new', enabled: true, order: 3 },
     { id: '5', label: 'Best Sellers', href: '/products?filter=bestsellers', enabled: true, order: 4 },
+    { id: '6', label: 'Hot Deals', href: '/deals', enabled: true, order: 5 },
   ],
 };
 

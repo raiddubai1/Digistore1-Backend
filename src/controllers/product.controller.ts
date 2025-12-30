@@ -278,6 +278,61 @@ export const getNewArrivals = async (req: Request, res: Response, next: NextFunc
   }
 };
 
+// Get hot deals
+export const getHotDeals = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { limit = 12 } = req.query;
+
+    // Get products marked as hot deals
+    let products = await prisma.product.findMany({
+      where: {
+        status: ProductStatus.APPROVED,
+        hotDeal: true,
+      },
+      take: Number(limit),
+      orderBy: { createdAt: 'desc' },
+      include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
+      },
+    });
+
+    // If no hot deals found, fall back to products with highest discounts
+    if (products.length === 0) {
+      products = await prisma.product.findMany({
+        where: {
+          status: ProductStatus.APPROVED,
+          discount: { gt: 0 },
+        },
+        take: Number(limit),
+        orderBy: { discount: 'desc' },
+        include: {
+          category: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
+          },
+        },
+      });
+    }
+
+    res.json({
+      success: true,
+      data: { products: products.map(serializeProduct) },
+    });
+  } catch (error) {
+    console.error('getHotDeals error:', error);
+    next(error);
+  }
+};
+
 // Get product by slug
 export const getProductBySlug = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
@@ -595,7 +650,7 @@ export const updateProduct = async (req: AuthRequest, res: Response, next: NextF
       'title', 'description', 'shortDescription', 'price', 'originalPrice',
       'categoryId', 'subcategory', 'tags', 'fileType', 'fileUrl', 'fileName',
       'thumbnailUrl', 'previewImages', 'whatsIncluded', 'requirements',
-      'featured', 'bestseller', 'newArrival', 'status',
+      'featured', 'bestseller', 'newArrival', 'hotDeal', 'status',
       'canvaTemplateLink', 'canvaTemplateLinks', 'canvaInstructions' // Canva template delivery fields
     ];
 
