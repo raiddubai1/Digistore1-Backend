@@ -25,9 +25,20 @@ router.post(
     body('description').trim().notEmpty(),
     body('price').isFloat({ min: 0 }),
     body('categoryId').notEmpty(),
-    body('fileType').notEmpty(),
-    body('fileUrl').notEmpty(),
+    // fileType and fileUrl are optional for Canva-only products
+    body('fileType').optional(),
+    body('fileUrl').optional(),
     body('thumbnailUrl').notEmpty(),
+    // Custom validation: require either fileUrl OR canvaTemplateLinks
+    body().custom((value) => {
+      const hasFileUrl = value.fileUrl && value.fileUrl.trim() !== '';
+      const hasCanvaLinks = value.canvaTemplateLinks && value.canvaTemplateLinks.length > 0;
+      const hasLegacyCanvaLink = value.canvaTemplateLink && value.canvaTemplateLink.trim() !== '';
+      if (!hasFileUrl && !hasCanvaLinks && !hasLegacyCanvaLink) {
+        throw new Error('Either fileUrl or canvaTemplateLinks is required');
+      }
+      return true;
+    }),
   ],
   validate,
   productController.createProduct

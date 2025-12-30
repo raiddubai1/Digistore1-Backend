@@ -461,6 +461,8 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
       canvaInstructions, // Optional: Custom instructions for Canva template
     } = req.body;
 
+    
+
     // Generate slug from title
     const slug = title
       .toLowerCase()
