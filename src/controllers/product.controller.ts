@@ -632,7 +632,9 @@ export const updateProduct = async (req: AuthRequest, res: Response, next: NextF
       'categoryId', 'categoryIds', 'subcategory', 'tags', 'fileType', 'fileUrl', 'fileName',
       'thumbnailUrl', 'previewImages', 'whatsIncluded', 'requirements',
       'featured', 'bestseller', 'newArrival', 'hotDeal', 'status',
-      'canvaTemplateLink', 'canvaTemplateLinks', 'canvaInstructions' // Canva template delivery fields
+      'canvaTemplateLink', 'canvaTemplateLinks', 'canvaInstructions', // Canva template delivery fields
+      'youtubeVideoUrl', // YouTube video URL
+      'metaTitle', 'metaDescription', 'focusKeyword' // SEO fields
     ];
 
     for (const field of allowedFields) {
