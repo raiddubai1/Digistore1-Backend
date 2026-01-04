@@ -671,3 +671,53 @@ model Setting {
   @@map("settings")
 }
 
+// ============================================
+// BLOG SYSTEM (SEO)
+// ============================================
+
+enum BlogStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model BlogPost {
+  id              String      @id @default(cuid())
+  slug            String      @unique
+  title           String
+  excerpt         String      @db.Text
+  content         String      @db.Text
+  featuredImage   String?
+
+  // Author info
+  authorName      String
+  authorAvatar    String?
+
+  // Categorization
+  category        String
+  tags            String[]    @default([])
+
+  // SEO fields
+  metaTitle       String?
+  metaDescription String?     @db.Text
+  metaKeywords    String[]    @default([])
+
+  // Publishing
+  status          BlogStatus  @default(DRAFT)
+  featured        Boolean     @default(false)
+  publishedAt     DateTime?
+
+  // Stats
+  viewCount       Int         @default(0)
+  readTime        Int         @default(5) // minutes
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([slug])
+  @@index([status])
+  @@index([category])
+  @@index([publishedAt])
+  @@map("blog_posts")
+}
+
