@@ -526,6 +526,7 @@ model Coupon {
   usageLimit        Int?
   usageCount        Int        @default(0)
   active            Boolean    @default(true)
+  firstPurchaseOnly Boolean    @default(false) // Only valid for first-time buyers
   startsAt          DateTime?
   expiresAt         DateTime?
   createdAt         DateTime   @default(now())

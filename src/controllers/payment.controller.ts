@@ -5,24 +5,104 @@ import { prisma } from '../lib/prisma';
 import { createPayPalOrder, capturePayPalPayment, verifyPayPalWebhook } from '../config/paypal';
 import { OrderStatus, PaymentMethod } from '@prisma/client';
 import { sendOrderConfirmationEmail } from '../services/email.service';
+import { isFirstTimeBuyer } from './coupon.controller';
 
-// Create PayPal order
+// Helper to validate and calculate coupon discount
+async function validateCouponForPayment(
+  couponCode: string | undefined,
+  subtotal: number,
+  userId?: string,
+  email?: string
+): Promise<{ valid: boolean; discountAmount: number; couponId: string | null; message?: string }> {
+  if (!couponCode) {
+    return { valid: true, discountAmount: 0, couponId: null };
+  }
+
+  const upperCode = couponCode.toUpperCase().trim();
+  const coupon = await prisma.coupon.findUnique({ where: { code: upperCode } });
+
+  if (!coupon) {
+    return { valid: false, discountAmount: 0, couponId: null, message: 'Invalid coupon code' };
+  }
+
+  if (!coupon.active) {
+    return { valid: false, discountAmount: 0, couponId: null, message: 'Coupon is not active' };
+  }
+
+  if (coupon.expiresAt && new Date() > coupon.expiresAt) {
+    return { valid: false, discountAmount: 0, couponId: null, message: 'Coupon has expired' };
+  }
+
+  if (coupon.usageLimit && coupon.usageCount >= coupon.usageLimit) {
+    return { valid: false, discountAmount: 0, couponId: null, message: 'Coupon usage limit reached' };
+  }
+
+  if (coupon.minPurchase && subtotal < Number(coupon.minPurchase)) {
+    return { valid: false, discountAmount: 0, couponId: null, message: `Minimum purchase of $${Number(coupon.minPurchase)} required` };
+  }
+
+  // Check first-purchase-only restriction
+  if (coupon.firstPurchaseOnly) {
+    const isFirstTime = await isFirstTimeBuyer(userId, email);
+    if (!isFirstTime) {
+      return { valid: false, discountAmount: 0, couponId: null, message: 'This coupon is only valid for first-time buyers' };
+    }
+  }
+
+  // Calculate discount
+  let discountAmount = 0;
+  if (coupon.type === 'PERCENTAGE') {
+    discountAmount = (subtotal * Number(coupon.value)) / 100;
+    if (coupon.maxDiscount) {
+      discountAmount = Math.min(discountAmount, Number(coupon.maxDiscount));
+    }
+  } else {
+    discountAmount = Math.min(Number(coupon.value), subtotal);
+  }
+
+  return { valid: true, discountAmount, couponId: coupon.id };
+}
+
+// Create PayPal order with server-side coupon validation
 export const createPayPalOrderHandler = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const { items, totalAmount, currency = 'USD', couponCode } = req.body;
+    const { items, totalAmount, currency = 'USD', couponCode, email } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       throw new AppError('Cart items are required', 400);
     }
 
-    // Create PayPal order
+    // Calculate subtotal from items (don't trust client's totalAmount)
+    let serverSubtotal = 0;
+    for (const item of items) {
+      const product = await prisma.product.findUnique({ where: { id: item.productId } });
+      if (!product) {
+        throw new AppError(`Product not found: ${item.productId}`, 404);
+      }
+      let itemPrice = Number(product.price);
+      // Apply license multiplier
+      if (item.license === 'COMMERCIAL' || item.license === 'commercial') itemPrice *= 3;
+      if (item.license === 'EXTENDED' || item.license === 'extended') itemPrice *= 5;
+      serverSubtotal += itemPrice * (item.quantity || 1);
+    }
+
+    // Validate coupon server-side
+    const couponResult = await validateCouponForPayment(couponCode, serverSubtotal, req.user?.id, email);
+    if (!couponResult.valid && couponCode) {
+      throw new AppError(couponResult.message || 'Invalid coupon', 400);
+    }
+
+    // Calculate final total
+    const finalTotal = Math.max(0, serverSubtotal - couponResult.discountAmount);
+
+    // Create PayPal order with server-calculated total
     const paypalOrder = await createPayPalOrder(
-      totalAmount,
+      finalTotal,
       currency,
       items.map((item: any) => ({
         name: item.name,
         quantity: item.quantity,
-        unit_amount: item.price,
+        unit_amount: item.price - (couponResult.discountAmount / items.length / item.quantity), // Distribute discount
       }))
     );
 
@@ -31,11 +111,17 @@ export const createPayPalOrderHandler = async (req: AuthRequest, res: Response, 
       data: {
         orderId: paypalOrder.id,
         approvalUrl: paypalOrder.links.find((link: any) => link.rel === 'approve')?.href,
+        serverTotal: finalTotal,
+        discount: couponResult.discountAmount,
       },
     });
   } catch (error: any) {
     console.error('PayPal order creation error:', error.response?.data || error.message);
-    next(new AppError('Failed to create PayPal order', 500));
+    if (error instanceof AppError) {
+      next(error);
+    } else {
+      next(new AppError('Failed to create PayPal order', 500));
+    }
   }
 };
 
@@ -89,34 +175,29 @@ export const capturePayPalOrderHandler = async (req: AuthRequest, res: Response,
       customerId = user.id;
     }
 
-    // Apply coupon if provided
-    let discountAmount = 0;
-    let couponId: string | null = null;
+    // Calculate subtotal from items for coupon validation
+    let serverSubtotal = 0;
+    for (const item of items) {
+      serverSubtotal += (item.price || 0) * (item.quantity || 1);
+    }
 
-    if (couponCode) {
-      const coupon = await prisma.coupon.findUnique({
-        where: { code: couponCode },
+    // Validate coupon server-side using the shared helper
+    const couponResult = await validateCouponForPayment(
+      couponCode,
+      serverSubtotal,
+      customerId,
+      customerEmail
+    );
+
+    let discountAmount = couponResult.discountAmount;
+    let couponId = couponResult.couponId;
+
+    // Update coupon usage if valid
+    if (couponId) {
+      await prisma.coupon.update({
+        where: { id: couponId },
+        data: { usageCount: { increment: 1 } },
       });
-
-      if (coupon && coupon.active && (!coupon.expiresAt || coupon.expiresAt > new Date())) {
-        if (!coupon.usageLimit || coupon.usageCount < coupon.usageLimit) {
-          if (coupon.type === 'PERCENTAGE') {
-            discountAmount = (capturedAmount * Number(coupon.value)) / 100;
-            if (coupon.maxDiscount) {
-              discountAmount = Math.min(discountAmount, Number(coupon.maxDiscount));
-            }
-          } else {
-            discountAmount = Number(coupon.value);
-          }
-          couponId = coupon.id;
-
-          // Update coupon usage
-          await prisma.coupon.update({
-            where: { id: coupon.id },
-            data: { usageCount: { increment: 1 } },
-          });
-        }
-      }
     }
 
     // Create order

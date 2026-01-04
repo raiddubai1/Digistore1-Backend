@@ -27,6 +27,7 @@ import aiRoutes from './routes/ai.routes';
 import settingsRoutes from './routes/settings.routes';
 import bundleRoutes from './routes/bundle.routes';
 import blogRoutes from './routes/blog.routes';
+import couponRoutes from './routes/coupon.routes';
 
 // Load environment variables
 dotenv.config();
@@ -121,6 +122,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/bundles', bundleRoutes);
 app.use('/api/blog', blogRoutes);
+app.use('/api/coupons', couponRoutes);
 
 // ============================================
 // ERROR HANDLING
