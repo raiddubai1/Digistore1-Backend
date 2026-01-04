@@ -47,6 +47,11 @@ export const getAllBundles = async (req: Request, res: Response, next: NextFunct
       },
     });
 
+    // Prevent caching to ensure fresh bundle data
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+
     res.json({
       success: true,
       data: { bundles },
@@ -89,6 +94,11 @@ export const getBundleBySlug = async (req: Request, res: Response, next: NextFun
     if (!bundle) {
       throw new AppError('Bundle not found', 404);
     }
+
+    // Prevent caching to ensure fresh bundle data
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
 
     res.json({
       success: true,
