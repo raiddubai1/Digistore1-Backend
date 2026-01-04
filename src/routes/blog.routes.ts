@@ -13,6 +13,7 @@ router.get('/:slug', blogController.getPostBySlug);
 
 // Admin routes
 router.get('/admin/all', authenticate, authorize('ADMIN'), blogController.getAllPostsAdmin);
+router.get('/admin/:id', authenticate, authorize('ADMIN'), blogController.getPostById);
 
 router.post(
   '/',

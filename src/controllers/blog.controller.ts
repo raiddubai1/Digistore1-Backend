@@ -137,6 +137,28 @@ export const getAllPostsAdmin = async (req: AuthRequest, res: Response, next: Ne
   }
 };
 
+// Get single post by ID (admin only)
+export const getPostById = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+
+    const post = await prisma.blogPost.findUnique({
+      where: { id },
+    });
+
+    if (!post) {
+      throw new AppError('Blog post not found', 404);
+    }
+
+    res.json({
+      success: true,
+      data: post,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Create blog post (admin only)
 export const createPost = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
