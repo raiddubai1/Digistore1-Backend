@@ -61,6 +61,10 @@ app.use(cors({
     else if (origin.endsWith('.vercel.app')) {
       callback(null, true);
     }
+    // Also allow digistore1.com domains (production)
+    else if (origin.endsWith('digistore1.com')) {
+      callback(null, true);
+    }
     else {
       console.warn(`CORS blocked origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
