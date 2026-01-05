@@ -58,18 +58,45 @@ export const getAllProducts = async (req: AuthRequest, res: Response, next: Next
       status: ProductStatus.APPROVED,
     };
 
+    // We use AND array to combine multiple OR conditions
+    const andConditions: Prisma.ProductWhereInput[] = [];
+
     if (category) {
-      where.category = {
-        slug: category as string,
-      };
+      // First, check if this category has a parent (is a subcategory)
+      const categoryRecord = await prisma.category.findUnique({
+        where: { slug: category as string },
+        include: { parent: true },
+      });
+
+      if (categoryRecord?.parentId) {
+        // This is a subcategory - include products from this category AND its parent
+        andConditions.push({
+          OR: [
+            { category: { slug: category as string } },
+            { category: { id: categoryRecord.parentId } },
+          ],
+        });
+      } else {
+        // This is a parent category - just filter by this category
+        where.category = {
+          slug: category as string,
+        };
+      }
     }
 
     if (search) {
-      where.OR = [
-        { title: { contains: search as string, mode: 'insensitive' } },
-        { description: { contains: search as string, mode: 'insensitive' } },
-        { tags: { has: search as string } },
-      ];
+      andConditions.push({
+        OR: [
+          { title: { contains: search as string, mode: 'insensitive' } },
+          { description: { contains: search as string, mode: 'insensitive' } },
+          { tags: { has: search as string } },
+        ],
+      });
+    }
+
+    // Add AND conditions if any
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
     }
 
     if (priceMin || priceMax) {
