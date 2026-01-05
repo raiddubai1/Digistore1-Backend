@@ -6,6 +6,7 @@ import compression from 'compression';
 import dotenv from 'dotenv';
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
+import { prisma, ensureDatabaseConnection, disconnectDatabase } from './lib/prisma';
 
 // Import routes
 import authRoutes from './routes/auth.routes';
@@ -94,13 +95,44 @@ if (process.env.NODE_ENV === 'development') {
 // ROUTES
 // ============================================
 
-// Health check
+// Health check (basic - for load balancers)
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
   });
+});
+
+// Deep health check (includes database) - use for monitoring
+app.get('/api/health', async (req, res) => {
+  try {
+    const dbConnected = await ensureDatabaseConnection(1, 500);
+    if (dbConnected) {
+      res.json({
+        success: true,
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV,
+        database: 'connected',
+      });
+    } else {
+      res.status(503).json({
+        success: false,
+        status: 'unhealthy',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV,
+        database: 'disconnected',
+      });
+    }
+  } catch (error) {
+    res.status(503).json({
+      success: false,
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      error: 'Database connection failed',
+    });
+  }
 });
 
 // API routes
@@ -163,6 +195,22 @@ process.on('unhandledRejection', (err: Error) => {
   console.error(err.name, err.message);
   process.exit(1);
 });
+
+// Graceful shutdown
+const gracefulShutdown = async (signal: string) => {
+  console.log(`\n${signal} received. Shutting down gracefully...`);
+  try {
+    await disconnectDatabase();
+    console.log('Database connection closed.');
+    process.exit(0);
+  } catch (error) {
+    console.error('Error during shutdown:', error);
+    process.exit(1);
+  }
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 export default app;
 
