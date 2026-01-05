@@ -89,6 +89,78 @@ export const createPayPalOrder = async (
   return response.data;
 };
 
+// Create PayPal order with discount support
+export const createPayPalOrderWithDiscount = async (
+  finalAmount: number,
+  currency: string = 'USD',
+  items: Array<{
+    name: string;
+    quantity: number;
+    unit_amount: number;
+  }>,
+  discountAmount: number = 0
+) => {
+  const accessToken = await getPayPalAccessToken();
+
+  const itemTotal = items.reduce((sum, item) => sum + (item.unit_amount * item.quantity), 0);
+
+  // Build breakdown with discount
+  const breakdown: any = {
+    item_total: {
+      currency_code: currency,
+      value: itemTotal.toFixed(2),
+    },
+  };
+
+  // Add discount to breakdown if there is one
+  if (discountAmount > 0) {
+    breakdown.discount = {
+      currency_code: currency,
+      value: discountAmount.toFixed(2),
+    };
+  }
+
+  const response = await axios.post(
+    `${PAYPAL_API}/v2/checkout/orders`,
+    {
+      intent: 'CAPTURE',
+      purchase_units: [
+        {
+          amount: {
+            currency_code: currency,
+            value: finalAmount.toFixed(2),
+            breakdown: breakdown,
+          },
+          items: items.map(item => ({
+            name: item.name.substring(0, 127), // PayPal limit
+            quantity: item.quantity.toString(),
+            unit_amount: {
+              currency_code: currency,
+              value: item.unit_amount.toFixed(2),
+            },
+            category: 'DIGITAL_GOODS',
+          })),
+        },
+      ],
+      application_context: {
+        brand_name: 'Digistore1',
+        landing_page: 'NO_PREFERENCE',
+        user_action: 'PAY_NOW',
+        return_url: `${process.env.FRONTEND_URL}/checkout/success`,
+        cancel_url: `${process.env.FRONTEND_URL}/checkout`,
+      },
+    },
+    {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  return response.data;
+};
+
 // Capture PayPal payment
 export const capturePayPalPayment = async (orderId: string) => {
   const accessToken = await getPayPalAccessToken();

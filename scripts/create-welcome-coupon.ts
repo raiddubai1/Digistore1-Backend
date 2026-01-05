@@ -30,7 +30,6 @@ async function createWelcomeCoupon() {
         value: 30,
         active: true,
         firstPurchaseOnly: true,
-        description: 'Welcome discount - 30% off for first-time buyers',
       },
     });
 
@@ -38,9 +37,9 @@ async function createWelcomeCoupon() {
 
     // Also create other commonly used coupons if they don't exist
     const otherCoupons = [
-      { code: 'SAVE10', type: 'PERCENTAGE' as const, value: 10, description: '10% off' },
-      { code: 'SAVE20', type: 'PERCENTAGE' as const, value: 20, description: '20% off' },
-      { code: 'FLAT5', type: 'FIXED' as const, value: 5, description: '$5 off' },
+      { code: 'SAVE10', type: 'PERCENTAGE' as const, value: 10 },
+      { code: 'SAVE20', type: 'PERCENTAGE' as const, value: 20 },
+      { code: 'FLAT5', type: 'FIXED' as const, value: 5 },
     ];
 
     for (const c of otherCoupons) {
@@ -52,7 +51,6 @@ async function createWelcomeCoupon() {
             type: c.type,
             value: c.value,
             active: true,
-            description: c.description,
           },
         });
         console.log(`Created ${c.code} coupon`);

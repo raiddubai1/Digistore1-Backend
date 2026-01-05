@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
-import { createPayPalOrder, capturePayPalPayment, verifyPayPalWebhook } from '../config/paypal';
+import { createPayPalOrder, createPayPalOrderWithDiscount, capturePayPalPayment, verifyPayPalWebhook } from '../config/paypal';
 import { OrderStatus, PaymentMethod } from '@prisma/client';
 import { sendOrderConfirmationEmail } from '../services/email.service';
 import { isFirstTimeBuyer } from './coupon.controller';
@@ -95,15 +95,20 @@ export const createPayPalOrderHandler = async (req: AuthRequest, res: Response, 
     // Calculate final total
     const finalTotal = Math.max(0, serverSubtotal - couponResult.discountAmount);
 
-    // Create PayPal order with server-calculated total
-    const paypalOrder = await createPayPalOrder(
+    // For PayPal, we need item_total to match the sum of items
+    // Use full item prices and apply discount as a separate line item or adjustment
+    const paypalItems = items.map((item: any) => ({
+      name: item.name,
+      quantity: item.quantity,
+      unit_amount: item.price,
+    }));
+
+    // Create PayPal order with discount handling
+    const paypalOrder = await createPayPalOrderWithDiscount(
       finalTotal,
       currency,
-      items.map((item: any) => ({
-        name: item.name,
-        quantity: item.quantity,
-        unit_amount: item.price - (couponResult.discountAmount / items.length / item.quantity), // Distribute discount
-      }))
+      paypalItems,
+      couponResult.discountAmount
     );
 
     res.json({
