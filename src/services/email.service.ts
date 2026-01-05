@@ -276,3 +276,79 @@ export const sendOrderStatusUpdateEmail = async (
   });
 };
 
+// Send gift card email to recipient
+export const sendGiftCardEmail = async (
+  recipientEmail: string,
+  recipientName: string,
+  giftCard: {
+    code: string;
+    amount: number;
+    purchaserName: string;
+    personalMessage?: string;
+    expiresAt?: Date;
+  }
+) => {
+  const redeemUrl = `${process.env.FRONTEND_URL}/gift-cards/redeem?code=${giftCard.code}`;
+  const shopUrl = `${process.env.FRONTEND_URL}/products`;
+
+  const personalMessageHtml = giftCard.personalMessage
+    ? `
+      <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0;">
+        <p style="margin: 0; font-style: italic; color: #856404;">"${giftCard.personalMessage}"</p>
+        <p style="margin: 10px 0 0; font-size: 14px; color: #856404;">— ${giftCard.purchaserName}</p>
+      </div>
+    `
+    : '';
+
+  const expiryHtml = giftCard.expiresAt
+    ? `<p style="color: #666; font-size: 12px; margin-top: 20px;">This gift card expires on ${new Date(giftCard.expiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.</p>`
+    : '';
+
+  const content = `
+    <div style="text-align: center; padding: 20px 0;">
+      <h1 style="color: #dc2626; font-size: 32px; margin: 0;">🎁 You've Received a Gift!</h1>
+    </div>
+
+    <p>Hi ${recipientName},</p>
+    <p><strong>${giftCard.purchaserName}</strong> has sent you a Digistore1 gift card!</p>
+
+    ${personalMessageHtml}
+
+    <div style="background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); border-radius: 16px; padding: 30px; margin: 30px 0; text-align: center; color: white;">
+      <p style="margin: 0 0 10px; font-size: 14px; opacity: 0.9;">GIFT CARD VALUE</p>
+      <p style="margin: 0; font-size: 48px; font-weight: bold;">$${giftCard.amount.toFixed(2)}</p>
+      <div style="background: rgba(255,255,255,0.2); border-radius: 8px; padding: 15px; margin-top: 20px;">
+        <p style="margin: 0 0 5px; font-size: 12px; opacity: 0.8;">YOUR GIFT CARD CODE</p>
+        <p style="margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 2px; font-family: monospace;">${giftCard.code}</p>
+      </div>
+    </div>
+
+    <p style="text-align: center; margin: 30px 0;">
+      <a href="${redeemUrl}" class="button" style="margin-right: 10px;">Redeem Now</a>
+    </p>
+
+    <div style="background: #f9f9f9; border-radius: 8px; padding: 20px; margin: 20px 0;">
+      <h3 style="margin: 0 0 15px;">How to use your gift card:</h3>
+      <ol style="margin: 0; padding-left: 20px; color: #666;">
+        <li style="margin-bottom: 10px;">Browse our collection of premium digital products at <a href="${shopUrl}">Digistore1</a></li>
+        <li style="margin-bottom: 10px;">Add items to your cart</li>
+        <li style="margin-bottom: 10px;">At checkout, enter your gift card code: <strong>${giftCard.code}</strong></li>
+        <li>The gift card balance will be applied to your order!</li>
+      </ol>
+    </div>
+
+    ${expiryHtml}
+
+    <p style="color: #666; font-size: 14px;">If you have any questions, please contact our support team.</p>
+  `;
+
+  const transporter = createTransporter();
+
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM || 'Digistore1 <noreply@digistore1.com>',
+    to: recipientEmail,
+    subject: `🎁 ${giftCard.purchaserName} sent you a $${giftCard.amount} Digistore1 Gift Card!`,
+    html: getBaseTemplate(content),
+  });
+};
+

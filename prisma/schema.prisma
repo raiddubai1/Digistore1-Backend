@@ -55,6 +55,7 @@ model User {
   referralsMade     Referral[]      @relation("ReferrerReferrals")
   referredBy        Referral[]      @relation("ReferredByReferrals")
   referralCode      String?         @unique
+  redeemedGiftCards GiftCard[]      @relation("RedeemedGiftCards")
 
   @@index([email])
   @@index([role])
@@ -720,5 +721,73 @@ model BlogPost {
   @@index([category])
   @@index([publishedAt])
   @@map("blog_posts")
+}
+
+// Gift Card status enum
+enum GiftCardStatus {
+  PENDING     // Payment initiated but not completed
+  ACTIVE      // Paid and ready to use
+  REDEEMED    // Fully used
+  EXPIRED     // Past expiry date
+  CANCELLED   // Cancelled/refunded
+}
+
+// Gift Card model
+model GiftCard {
+  id              String          @id @default(uuid())
+  code            String          @unique // Unique redemption code (e.g., GC-XXXX-XXXX-XXXX)
+  amount          Decimal         @db.Decimal(10, 2) // Original gift card value
+  balance         Decimal         @db.Decimal(10, 2) // Remaining balance
+  currency        String          @default("USD")
+  status          GiftCardStatus  @default(PENDING)
+
+  // Purchaser info
+  purchaserEmail  String
+  purchaserName   String?
+
+  // Recipient info
+  recipientEmail  String
+  recipientName   String
+  personalMessage String?         @db.Text
+
+  // Payment info
+  paypalOrderId   String?         // PayPal order ID for tracking
+
+  // Dates
+  purchasedAt     DateTime?       // When payment was completed
+  expiresAt       DateTime?       // Optional expiry date
+  redeemedAt      DateTime?       // When fully redeemed
+  emailSentAt     DateTime?       // When gift card email was sent
+
+  // Tracking
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relation to user who redeemed (optional)
+  redeemedById    String?
+  redeemedBy      User?           @relation("RedeemedGiftCards", fields: [redeemedById], references: [id])
+
+  // Usage history
+  usages          GiftCardUsage[]
+
+  @@index([code])
+  @@index([status])
+  @@index([recipientEmail])
+  @@index([purchaserEmail])
+  @@map("gift_cards")
+}
+
+// Gift Card Usage tracking
+model GiftCardUsage {
+  id          String    @id @default(uuid())
+  giftCardId  String
+  giftCard    GiftCard  @relation(fields: [giftCardId], references: [id])
+  orderId     String?   // Reference to order where it was used
+  amount      Decimal   @db.Decimal(10, 2) // Amount used
+  usedAt      DateTime  @default(now())
+
+  @@index([giftCardId])
+  @@index([orderId])
+  @@map("gift_card_usages")
 }
 
