@@ -58,18 +58,44 @@ export const getAllProducts = async (req: AuthRequest, res: Response, next: Next
       status: ProductStatus.APPROVED,
     };
 
+    // We need to build AND conditions for combining category filter with search
+    const andConditions: Prisma.ProductWhereInput[] = [];
+
     if (category) {
-      where.category = {
-        slug: category as string,
-      };
+      // First get the category ID from slug
+      const categoryRecord = await prisma.category.findUnique({
+        where: { slug: category as string },
+      });
+
+      if (categoryRecord) {
+        // Check BOTH primary category AND categoryIds array
+        andConditions.push({
+          OR: [
+            { category: { slug: category as string } },
+            { categoryIds: { has: categoryRecord.id } },
+          ],
+        });
+      } else {
+        // Fallback to just primary category
+        where.category = {
+          slug: category as string,
+        };
+      }
     }
 
     if (search) {
-      where.OR = [
-        { title: { contains: search as string, mode: 'insensitive' } },
-        { description: { contains: search as string, mode: 'insensitive' } },
-        { tags: { has: search as string } },
-      ];
+      andConditions.push({
+        OR: [
+          { title: { contains: search as string, mode: 'insensitive' } },
+          { description: { contains: search as string, mode: 'insensitive' } },
+          { tags: { has: search as string } },
+        ],
+      });
+    }
+
+    // Add AND conditions if any
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
     }
 
     if (priceMin || priceMax) {
