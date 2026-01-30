@@ -464,9 +464,14 @@ export const getProductById = async (req: AuthRequest, res: Response, next: Next
 // Create product (Vendor only)
 export const createProduct = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    console.log('[createProduct] Starting product creation...');
+    console.log('[createProduct] Request body title:', req.body?.title);
+
     if (!req.user) {
       throw new AppError('Not authenticated', 401);
     }
+
+    console.log('[createProduct] User:', req.user.id, req.user.role);
 
     // Get or create vendor profile (for admin users, create a default one)
     let vendorProfile = await prisma.vendorProfile.findUnique({
@@ -513,13 +518,16 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
       fileUrl,
       fileName,
       thumbnailUrl,
+      thumbnailAlt, // Alt text for thumbnail (SEO)
       previewImages,
+      previewImageAlts, // Alt texts for preview images (SEO)
       whatsIncluded,
       requirements,
       files, // Array of product files
       canvaTemplateLink, // Optional: Canva template URL for Canva-based products
       canvaTemplateLinks, // Optional: Array of {name, url} for multiple Canva links
       canvaInstructions, // Optional: Custom instructions for Canva template
+      youtubeVideoUrl, // Optional: YouTube video URL
     } = req.body;
 
     
@@ -559,12 +567,15 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
           fileUrl,
           fileName,
           thumbnailUrl,
+          thumbnailAlt: thumbnailAlt || null,
           previewImages: previewImages || [],
+          previewImageAlts: previewImageAlts || [],
           whatsIncluded: whatsIncluded || [],
           requirements: requirements || [],
           canvaTemplateLink: canvaTemplateLink || null,
           canvaTemplateLinks: canvaTemplateLinks || null,
           canvaInstructions: canvaInstructions || null,
+          youtubeVideoUrl: youtubeVideoUrl || null,
           vendorId: vendorProfile.id,
           status: vendorProfile.autoApproveProducts ? ProductStatus.APPROVED : ProductStatus.PENDING_REVIEW,
         },
@@ -613,12 +624,15 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
       });
     });
 
+    console.log('[createProduct] Product created successfully:', product?.id);
     res.status(201).json({
       success: true,
       message: 'Product created successfully',
       data: { product },
     });
-  } catch (error) {
+  } catch (error: any) {
+    console.error('[createProduct] ERROR:', error.message);
+    console.error('[createProduct] Stack:', error.stack);
     next(error);
   }
 };
